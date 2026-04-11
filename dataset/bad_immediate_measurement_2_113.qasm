@@ -1,0 +1,14 @@
+measure q[1] -> mout[1];
+h q[0];
+h q[0];
+x q[0];
+x q[0];
+s q[0];
+s q[0];
+s q[0];
+x q[1];
+h q[1];
+z q[0];
+y q[0];
+measure q[0] -> c[0];
+measure q[1] -> c[1];

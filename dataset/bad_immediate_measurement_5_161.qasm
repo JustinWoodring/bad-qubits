@@ -1,0 +1,15 @@
+measure q[4] -> mout[4];
+measure q[0] -> mout[0];
+id q[1];
+measure q[1] -> mout[1];
+id q[2];
+measure q[2] -> mout[2];
+measure q[3] -> mout[3];
+rx(pi/4) q[0];
+h q[2];
+y q[0];
+measure q[0] -> c[0];
+measure q[1] -> c[1];
+measure q[2] -> c[2];
+measure q[3] -> c[3];
+measure q[4] -> c[4];

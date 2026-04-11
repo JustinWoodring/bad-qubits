@@ -1,0 +1,13 @@
+h anc[0];
+measure anc[0] -> c[3];
+ry(pi/4) q[0];
+h q[1];
+ry(pi/4) q[2];
+cx anc[0], q[2];
+z q[1];
+h q[1];
+t q[1];
+h q[2];
+measure q[0] -> c[0];
+measure q[1] -> c[1];
+measure q[2] -> c[2];

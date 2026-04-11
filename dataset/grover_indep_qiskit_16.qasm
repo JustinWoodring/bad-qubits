@@ -1,0 +1,128 @@
+
+
+h q[0];
+h q[1];
+h q[2];
+h q[3];
+h q[4];
+h q[5];
+h q[6];
+h q[7];
+h q[8];
+h q[9];
+h q[10];
+h q[11];
+h q[12];
+h q[13];
+h q[14];
+h q[15];
+
+x q[1];
+x q[3];
+x q[5];
+x q[7];
+x q[9];
+x q[11];
+x q[13];
+x q[15];
+
+mct q[0],q[1],q[2],q[3],q[4],q[5],q[6],q[7],q[8],q[9],q[10],q[11],q[12],q[13],q[14],q[15];
+
+x q[1];
+x q[3];
+x q[5];
+x q[7];
+x q[9];
+x q[11];
+x q[13];
+x q[15];
+
+h q[0];
+h q[1];
+h q[2];
+h q[3];
+h q[4];
+h q[5];
+h q[6];
+h q[7];
+h q[8];
+h q[9];
+h q[10];
+h q[11];
+h q[12];
+h q[13];
+h q[14];
+h q[15];
+
+x q[0];
+x q[1];
+x q[2];
+x q[3];
+x q[4];
+x q[5];
+x q[6];
+x q[7];
+x q[8];
+x q[9];
+x q[10];
+x q[11];
+x q[12];
+x q[13];
+x q[14];
+x q[15];
+
+h q[0];
+mct q[1],q[2],q[3],q[4],q[5],q[6],q[7],q[8],q[9],q[10],q[11],q[12],q[13],q[14],q[15],q[0];
+h q[0];
+
+x q[0];
+x q[1];
+x q[2];
+x q[3];
+x q[4];
+x q[5];
+x q[6];
+x q[7];
+x q[8];
+x q[9];
+x q[10];
+x q[11];
+x q[12];
+x q[13];
+x q[14];
+x q[15];
+
+h q[0];
+h q[1];
+h q[2];
+h q[3];
+h q[4];
+h q[5];
+h q[6];
+h q[7];
+h q[8];
+h q[9];
+h q[10];
+h q[11];
+h q[12];
+h q[13];
+h q[14];
+h q[15];
+
+barrier q[0],q[1],q[2],q[3],q[4],q[5],q[6],q[7],q[8],q[9],q[10],q[11],q[12],q[13],q[14],q[15];
+measure q[0] -> meas[0];
+measure q[1] -> meas[1];
+measure q[2] -> meas[2];
+measure q[3] -> meas[3];
+measure q[4] -> meas[4];
+measure q[5] -> meas[5];
+measure q[6] -> meas[6];
+measure q[7] -> meas[7];
+measure q[8] -> meas[8];
+measure q[9] -> meas[9];
+measure q[10] -> meas[10];
+measure q[11] -> meas[11];
+measure q[12] -> meas[12];
+measure q[13] -> meas[13];
+measure q[14] -> meas[14];
+measure q[15] -> meas[15];

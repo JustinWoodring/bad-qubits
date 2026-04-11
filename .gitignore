@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+.venv/
+venv/
+
+# Model weights and large binaries
+models/
+unsloth_compiled_cache/
+malicious-qubits/outputs/
+malicious-qubits/llama.cpp/
+malicious-qubits/llama-quantum-classifier/
+malicious-qubits/mistral-quantum-classifier/
+
+# Runtime files
+vllm_server.log
+vllm_server.pid
+
+# OS
+.DS_Store
