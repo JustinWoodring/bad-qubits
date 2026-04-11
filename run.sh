@@ -15,11 +15,14 @@
 #   --data-dir    PATH  Path to processed data (default: data)
 #   --results-dir PATH  Path to results output (default: results)
 #   --models-dir  PATH  Path to model output (default: models)
+#   --hf-repo    REPO   HuggingFace repo to push models to (e.g. username/bad-qubits)
+#   --hf-token   TOKEN  HuggingFace token (default: $HF_TOKEN env var)
 #   -h | --help         Show this message
 #
 # EXAMPLE
 #   ./run.sh --api-key abc123
 #   ./run.sh --api-key abc123 --fold 1 --skip-explain
+#   ./run.sh --api-key abc123 --hf-repo username/bad-qubits
 
 set -euo pipefail
 
@@ -61,6 +64,8 @@ DATASET_DIR="$SCRIPT_DIR/dataset"
 DATA_DIR="$_DEFAULT_DATA_DIR"
 RESULTS_DIR="$_DEFAULT_RESULTS_DIR"
 MODELS_DIR="$_DEFAULT_MODELS_DIR"
+HF_REPO=""
+HF_TOKEN="${HF_TOKEN:-}"
 
 # ── parse args ────────────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
@@ -75,6 +80,8 @@ while [[ $# -gt 0 ]]; do
         --data-dir)     DATA_DIR="$2";      shift 2 ;;
         --results-dir)  RESULTS_DIR="$2";   shift 2 ;;
         --models-dir)   MODELS_DIR="$2";    shift 2 ;;
+        --hf-repo)      HF_REPO="$2";       shift 2 ;;
+        --hf-token)     HF_TOKEN="$2";      shift 2 ;;
         -h|--help)
             sed -n '/^# USAGE/,/^[^#]/p' "$0" | head -n -1 | sed 's/^# \?//'
             exit 0
@@ -99,6 +106,7 @@ echo "  Dataset dir : $DATASET_DIR"
 echo "  Data dir    : $DATA_DIR"
 echo "  Results dir : $RESULTS_DIR"
 echo "  Models dir  : $MODELS_DIR"
+[[ -n "$HF_REPO" ]] && echo "  HF repo     : $HF_REPO"
 [[ -n "$FOLD" ]]   && echo "  Fold        : $FOLD"
 echo "  SFT steps   : $SFT_STEPS"
 echo "  GRPO steps  : $GRPO_STEPS"
@@ -138,6 +146,52 @@ echo ""
 echo "--- [4/4] Aggregate results ---"
 python main.py aggregate $COMMON
 
+# ── STEP 5: push to HuggingFace ───────────────────────────────────────────────
+if [[ -n "$HF_REPO" ]]; then
+    echo ""
+    echo "--- [5/5] Push models to HuggingFace ($HF_REPO) ---"
+    if [[ -z "$HF_TOKEN" ]]; then
+        echo "ERROR: --hf-token or HF_TOKEN env var is required for HuggingFace push"
+        exit 1
+    fi
+    python - <<PYEOF
+import os
+from huggingface_hub import HfApi, upload_folder
+
+api = HfApi(token="$HF_TOKEN")
+repo_id = "$HF_REPO"
+
+# Create repo if it doesn't exist
+api.create_repo(repo_id=repo_id, exist_ok=True)
+
+models_dir = "$MODELS_DIR"
+for fold_dir in sorted(os.listdir(models_dir)):
+    fold_path = os.path.join(models_dir, fold_dir)
+    if os.path.isdir(fold_path) and fold_dir.startswith("fold_"):
+        print(f"  Uploading {fold_dir}...")
+        upload_folder(
+            repo_id=repo_id,
+            folder_path=fold_path,
+            path_in_repo=fold_dir,
+            token="$HF_TOKEN",
+        )
+
+# Upload aggregate results
+results_dir = "$RESULTS_DIR"
+agg_dir = os.path.join(results_dir, "aggregate")
+if os.path.isdir(agg_dir):
+    print("  Uploading aggregate results...")
+    upload_folder(
+        repo_id=repo_id,
+        folder_path=agg_dir,
+        path_in_repo="results/aggregate",
+        token="$HF_TOKEN",
+    )
+
+print(f"  Done — https://huggingface.co/{repo_id}")
+PYEOF
+fi
+
 echo ""
 echo "============================================================"
 echo "  Done. Outputs:"
@@ -145,4 +199,5 @@ echo "    explanations.jsonl"
 echo "    $RESULTS_DIR/aggregate/cv_summary.json"
 echo "    $RESULTS_DIR/aggregate/avg_confusion_matrix.png"
 echo "    $MODELS_DIR/fold_{1-5}/"
+[[ -n "$HF_REPO" ]] && echo "    https://huggingface.co/$HF_REPO"
 echo "============================================================"
