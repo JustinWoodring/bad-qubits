@@ -98,7 +98,7 @@ def cmd_prepare(args) -> None:
 def cmd_explain(args) -> None:
     """Generate explanations.jsonl using GLM-5 via ZhipuAI API."""
     header("STEP 2 — Generate Explanations (GLM-5)")
-    check_prereq("data/all_filenames.json", "prepare")
+    check_prereq(os.path.join(args.data_dir, "all_filenames.json"), "prepare")
 
     api_key = getattr(args, "api_key", None)
     if not api_key:
@@ -135,7 +135,7 @@ def cmd_explain(args) -> None:
 def cmd_train(args) -> None:
     """Run 5-fold CV training (or a single fold with --fold N)."""
     header("STEP 3 — Train (5-fold Cross-Validation)")
-    check_prereq("data", "prepare")
+    check_prereq(args.data_dir, "prepare")
 
     from train_cv import setup_cuda, train_fold
     import gc
