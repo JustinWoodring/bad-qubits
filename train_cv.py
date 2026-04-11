@@ -23,6 +23,17 @@ from datetime import datetime
 from multiprocessing import cpu_count
 
 import torch
+
+# llm_blender (a trl transitive dep) references TRANSFORMERS_CACHE which was
+# removed in transformers >=4.43. Patch it back before trl is imported.
+import os as _os
+import transformers.utils.hub as _hub
+if not hasattr(_hub, "TRANSFORMERS_CACHE"):
+    _hub.TRANSFORMERS_CACHE = _os.getenv(
+        "TRANSFORMERS_CACHE",
+        _os.path.join(_os.path.expanduser("~"), ".cache", "huggingface", "hub"),
+    )
+
 from unsloth import FastLanguageModel, PatchFastRL
 from datasets import Dataset
 from trl import SFTTrainer, GRPOTrainer, GRPOConfig
