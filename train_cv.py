@@ -934,6 +934,7 @@ def train_fold(
         random_state=3407,
         use_rslora=True,
         loftq_config=None,
+        lora_dtype=torch.float16,
     )
 
     # Phase 1: SFT warm-up (teaches JSON output format)
