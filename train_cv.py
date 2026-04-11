@@ -935,11 +935,12 @@ def train_fold(
         use_rslora=True,
         loftq_config=None,
     )
-    # Cast LoRA trainable weights to float16 to match the model's compute dtype.
-    # Without this, unsloth's fast_lora kernel raises a Half/Float dtype mismatch.
+    # Cast LoRA trainable weights to match the model's compute dtype so unsloth's
+    # fast_lora kernel doesn't raise a dtype mismatch at runtime.
+    _compute_dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
     for param in model.parameters():
         if param.requires_grad:
-            param.data = param.data.to(torch.float16)
+            param.data = param.data.to(_compute_dtype)
 
     # Phase 1: SFT warm-up (teaches JSON output format)
     sft_output = os.path.join(model_output_dir, "sft_warmup")
