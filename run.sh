@@ -29,17 +29,29 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# ── helpers ───────────────────────────────────────────────────────────────────
+log()  { echo "[$(date '+%H:%M:%S')] $*"; }
+step() { echo ""; echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"; echo "[$(date '+%H:%M:%S')] $*"; echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"; }
+elapsed() {
+    local secs=$(( $(date +%s) - _STEP_START ))
+    printf "%dm%02ds" $(( secs/60 )) $(( secs%60 ))
+}
+_PIPELINE_START=$(date +%s)
+_STEP_START=$(date +%s)
+
 # ── RunPod path routing ───────────────────────────────────────────────────────
 # On RunPod the volume disk is mounted at /workspace (20 GB persistent).
 # Route the HF model cache and all large outputs there so they don't fill
 # the 20 GB container disk.
 if [[ -d "/workspace" ]]; then
+    log "RunPod environment detected — routing outputs to /workspace"
     export HF_HOME="/workspace/.cache/huggingface"
     export TRANSFORMERS_CACHE="/workspace/.cache/huggingface"
     _DEFAULT_DATA_DIR="/workspace/data"
     _DEFAULT_RESULTS_DIR="/workspace/results"
     _DEFAULT_MODELS_DIR="/workspace/models"
 else
+    log "Local environment detected"
     _DEFAULT_DATA_DIR="data"
     _DEFAULT_RESULTS_DIR="results"
     _DEFAULT_MODELS_DIR="models"
@@ -47,11 +59,22 @@ fi
 
 # ── dependency install ────────────────────────────────────────────────────────
 # Auto-installs on a fresh RunPod pod. Safe to re-run (pip is idempotent).
+log "Checking dependencies..."
 if ! python -c "import unsloth" &>/dev/null; then
-    echo "Installing unsloth..."
-    pip install --quiet "unsloth[cu124-torch240]"
+    log "unsloth not found — installing unsloth (this may take a few minutes)..."
+    pip install unsloth 2>&1 | while IFS= read -r line; do
+        echo "  [pip] $line"
+    done
+    log "unsloth install complete."
+else
+    log "unsloth already installed, skipping."
 fi
-pip install --quiet -r "$SCRIPT_DIR/requirements.txt"
+
+log "Installing requirements.txt..."
+pip install -r "$SCRIPT_DIR/requirements.txt" 2>&1 | while IFS= read -r line; do
+    echo "  [pip] $line"
+done
+log "Dependencies ready."
 
 # ── defaults ──────────────────────────────────────────────────────────────────
 API_KEY=""
@@ -99,6 +122,7 @@ fi
 COMMON="--dataset-dir $DATASET_DIR --data-dir $DATA_DIR --results-dir $RESULTS_DIR --models-dir $MODELS_DIR"
 FOLD_FLAG=${FOLD:+"--fold $FOLD"}
 
+echo ""
 echo "============================================================"
 echo "  Bad Qubits — Full Pipeline"
 echo "============================================================"
@@ -107,94 +131,115 @@ echo "  Data dir    : $DATA_DIR"
 echo "  Results dir : $RESULTS_DIR"
 echo "  Models dir  : $MODELS_DIR"
 [[ -n "$HF_REPO" ]] && echo "  HF repo     : $HF_REPO"
-[[ -n "$FOLD" ]]   && echo "  Fold        : $FOLD"
+[[ -n "$FOLD" ]]    && echo "  Fold        : $FOLD"
 echo "  SFT steps   : $SFT_STEPS"
 echo "  GRPO steps  : $GRPO_STEPS"
 [[ "$SKIP_EXPLAIN" -eq 1 ]] && echo "  Explain     : skipped"
-echo ""
+echo "============================================================"
 
 # ── STEP 1: prepare ───────────────────────────────────────────────────────────
-echo "--- [1/4] Prepare dataset ---"
+step "[1/5] Prepare dataset"
+_STEP_START=$(date +%s)
 python main.py prepare $COMMON
+log "Step 1 complete ($(elapsed))"
 
 # ── STEP 2: explain ───────────────────────────────────────────────────────────
 if [[ "$SKIP_EXPLAIN" -eq 0 ]]; then
-    echo ""
-    echo "--- [2/4] Generate explanations ---"
+    step "[2/5] Generate explanations"
+    _STEP_START=$(date +%s)
     LIMIT_FLAG=${LIMIT:+"--limit $LIMIT"}
+    [[ -n "$LIMIT" ]] && log "Limiting to $LIMIT circuits"
     python main.py explain $COMMON \
         --api-key "$API_KEY" \
         --manifest "$DATA_DIR/all_filenames.json" \
         --output explanations.jsonl \
         ${LIMIT_FLAG:-}
+    log "Step 2 complete ($(elapsed))"
 else
-    echo ""
-    echo "--- [2/4] Skipping explanation generation ---"
+    step "[2/5] Skipping explanation generation (reusing explanations.jsonl)"
 fi
 
 # ── STEP 3: train ─────────────────────────────────────────────────────────────
-echo ""
-echo "--- [3/4] Train (SFT + GRPO, 5-fold CV) ---"
+step "[3/5] Train — SFT + GRPO${FOLD:+, fold $FOLD only}"
+_STEP_START=$(date +%s)
+log "SFT steps: $SFT_STEPS  |  GRPO steps: $GRPO_STEPS"
 python main.py train $COMMON \
     --explanations explanations.jsonl \
     --sft-steps "$SFT_STEPS" \
     --grpo-steps "$GRPO_STEPS" \
     ${FOLD_FLAG:-}
+log "Step 3 complete ($(elapsed))"
 
 # ── STEP 4: aggregate ─────────────────────────────────────────────────────────
-echo ""
-echo "--- [4/4] Aggregate results ---"
+step "[4/5] Aggregate results"
+_STEP_START=$(date +%s)
 python main.py aggregate $COMMON
+log "Step 4 complete ($(elapsed))"
 
 # ── STEP 5: push to HuggingFace ───────────────────────────────────────────────
 if [[ -n "$HF_REPO" ]]; then
-    echo ""
-    echo "--- [5/5] Push models to HuggingFace ($HF_REPO) ---"
+    step "[5/5] Push models to HuggingFace — $HF_REPO"
+    _STEP_START=$(date +%s)
     if [[ -z "$HF_TOKEN" ]]; then
         echo "ERROR: --hf-token or HF_TOKEN env var is required for HuggingFace push"
         exit 1
     fi
     python - <<PYEOF
-import os
+import os, sys, time
 from huggingface_hub import HfApi, upload_folder
+
+def log(msg):
+    from datetime import datetime
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}", flush=True)
 
 api = HfApi(token="$HF_TOKEN")
 repo_id = "$HF_REPO"
 
-# Create repo if it doesn't exist
+log(f"Creating/verifying repo: {repo_id}")
 api.create_repo(repo_id=repo_id, exist_ok=True)
+log("Repo ready.")
 
 models_dir = "$MODELS_DIR"
-for fold_dir in sorted(os.listdir(models_dir)):
-    fold_path = os.path.join(models_dir, fold_dir)
-    if os.path.isdir(fold_path) and fold_dir.startswith("fold_"):
-        print(f"  Uploading {fold_dir}...")
-        upload_folder(
-            repo_id=repo_id,
-            folder_path=fold_path,
-            path_in_repo=fold_dir,
-            token="$HF_TOKEN",
-        )
+fold_dirs = sorted(d for d in os.listdir(models_dir)
+                   if os.path.isdir(os.path.join(models_dir, d)) and d.startswith("fold_"))
 
-# Upload aggregate results
+for i, fold_dir in enumerate(fold_dirs, 1):
+    fold_path = os.path.join(models_dir, fold_dir)
+    log(f"Uploading {fold_dir} ({i}/{len(fold_dirs)})...")
+    t0 = time.time()
+    upload_folder(
+        repo_id=repo_id,
+        folder_path=fold_path,
+        path_in_repo=fold_dir,
+        token="$HF_TOKEN",
+    )
+    log(f"  {fold_dir} done ({time.time()-t0:.0f}s)")
+
 results_dir = "$RESULTS_DIR"
 agg_dir = os.path.join(results_dir, "aggregate")
 if os.path.isdir(agg_dir):
-    print("  Uploading aggregate results...")
+    log("Uploading aggregate results...")
+    t0 = time.time()
     upload_folder(
         repo_id=repo_id,
         folder_path=agg_dir,
         path_in_repo="results/aggregate",
         token="$HF_TOKEN",
     )
+    log(f"  aggregate done ({time.time()-t0:.0f}s)")
 
-print(f"  Done — https://huggingface.co/{repo_id}")
+log(f"All uploads complete — https://huggingface.co/{repo_id}")
 PYEOF
+    log "Step 5 complete ($(elapsed))"
+else
+    log "Skipping HuggingFace push (no --hf-repo specified)"
 fi
 
+_TOTAL=$(( $(date +%s) - _PIPELINE_START ))
 echo ""
 echo "============================================================"
-echo "  Done. Outputs:"
+echo "  Pipeline complete in $(printf '%dm%02ds' $((_TOTAL/60)) $((_TOTAL%60)))"
+echo "  Outputs:"
 echo "    explanations.jsonl"
 echo "    $RESULTS_DIR/aggregate/cv_summary.json"
 echo "    $RESULTS_DIR/aggregate/avg_confusion_matrix.png"
