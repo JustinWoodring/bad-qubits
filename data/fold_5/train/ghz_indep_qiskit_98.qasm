@@ -1,1 +1,0 @@
-/home/justin_woodring/bad-qubits/dataset/ghz_indep_qiskit_98.qasm

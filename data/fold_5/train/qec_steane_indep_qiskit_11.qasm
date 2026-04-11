@@ -1,1 +1,0 @@
-/home/justin_woodring/bad-qubits/dataset/qec_steane_indep_qiskit_11.qasm

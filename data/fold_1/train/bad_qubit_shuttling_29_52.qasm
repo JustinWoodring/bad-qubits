@@ -1,1 +1,0 @@
-/home/justin_woodring/bad-qubits/dataset/bad_qubit_shuttling_29_52.qasm

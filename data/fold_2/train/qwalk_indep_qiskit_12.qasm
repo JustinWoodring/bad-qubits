@@ -1,1 +1,0 @@
-/home/justin_woodring/bad-qubits/dataset/qwalk_indep_qiskit_12.qasm

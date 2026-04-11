@@ -1,1 +1,0 @@
-/home/justin_woodring/bad-qubits/dataset/pricingput_indep_qiskit_15.qasm

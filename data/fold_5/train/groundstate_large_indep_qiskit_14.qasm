@@ -1,1 +1,0 @@
-/home/justin_woodring/bad-qubits/dataset/groundstate_large_indep_qiskit_14.qasm

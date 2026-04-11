@@ -1,1 +1,0 @@
-/home/justin_woodring/bad-qubits/dataset/qwalk-noancilla_indep_qiskit_3.qasm

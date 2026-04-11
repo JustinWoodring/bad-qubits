@@ -1,1 +1,0 @@
-/home/justin_woodring/bad-qubits/dataset/bad_mixed_25_40.qasm

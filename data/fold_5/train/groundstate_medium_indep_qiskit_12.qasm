@@ -1,1 +1,0 @@
-/home/justin_woodring/bad-qubits/dataset/groundstate_medium_indep_qiskit_12.qasm

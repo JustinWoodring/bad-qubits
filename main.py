@@ -318,7 +318,7 @@ def cmd_classify(args) -> None:
                 input_ids=inputs.input_ids,
                 attention_mask=inputs.attention_mask,
                 max_new_tokens=MAX_NEW_TOKENS_INFERENCE,
-                use_cache=False,
+                use_cache=True,
                 do_sample=False,
                 pad_token_id=tokenizer.pad_token_id,
                 num_beams=1,

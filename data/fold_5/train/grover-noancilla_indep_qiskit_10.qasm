@@ -1,1 +1,0 @@
-/home/justin_woodring/bad-qubits/dataset/grover-noancilla_indep_qiskit_10.qasm

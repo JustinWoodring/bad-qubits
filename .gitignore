@@ -6,17 +6,11 @@ __pycache__/
 .venv/
 venv/
 
-# Model weights and large binaries
+# Generated during training — not committed
+data/
 models/
+results/
 unsloth_compiled_cache/
-malicious-qubits/outputs/
-malicious-qubits/llama.cpp/
-malicious-qubits/llama-quantum-classifier/
-malicious-qubits/mistral-quantum-classifier/
-
-# Runtime files
-vllm_server.log
-vllm_server.pid
 
 # OS
 .DS_Store

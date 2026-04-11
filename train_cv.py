@@ -45,10 +45,10 @@ from generate_explanations import extract_circuit_properties
 # Constants
 # ---------------------------------------------------------------------------
 
-MODEL_NAME = "Qwen/Qwen2.5-Coder-7B"
-MAX_SEQ_LENGTH = 2048
-MAX_CIRCUIT_CHARS = 4096
-MAX_NEW_TOKENS_INFERENCE = 100  # JSON with ≤20-word explanation is ~50 tokens; 2x headroom
+MODEL_NAME = "unsloth/Qwen2.5-Coder-7B-bnb-4bit"
+MAX_SEQ_LENGTH = 8192
+MAX_CIRCUIT_CHARS = 7168  # ~7k chars of circuit text; leaves ~1k tokens for prompt wrapper
+MAX_NEW_TOKENS_INFERENCE = 256  # JSON with label + category + explanation; 256 gives full headroom
 
 
 # ---------------------------------------------------------------------------
@@ -149,7 +149,7 @@ def batch_classify_quantum_circuits(
         inputs = tokenizer(
             prompts,
             return_tensors="pt",
-            max_length=2048,
+            max_length=MAX_SEQ_LENGTH,
             truncation=True,
             padding=True,
             add_special_tokens=False,
@@ -163,7 +163,7 @@ def batch_classify_quantum_circuits(
                         input_ids=inputs.input_ids,
                         attention_mask=inputs.attention_mask,
                         max_new_tokens=MAX_NEW_TOKENS_INFERENCE,
-                        use_cache=False,
+                        use_cache=True,
                         do_sample=False,
                         pad_token_id=tokenizer.pad_token_id,
                         num_beams=1,
@@ -765,10 +765,6 @@ def run_sft_warmup(
     eval_dataset  = Dataset.from_list(val_raw).map(format_data_qwen, batched=True,
                                                    num_proc=min(cpu_count(), 8))
 
-    num_gpus = torch.cuda.device_count()
-    effective_batch = 8 if num_gpus >= 2 else 4
-    per_device = max(1, effective_batch // max(num_gpus, 1))
-
     trainer = SFTTrainer(
         model=model,
         tokenizer=tokenizer,
@@ -779,8 +775,8 @@ def run_sft_warmup(
         dataset_num_proc=min(cpu_count(), 8),
         packing=True,
         args=TrainingArguments(
-            per_device_train_batch_size=per_device,
-            gradient_accumulation_steps=max(1, 8 // effective_batch),
+            per_device_train_batch_size=8,
+            gradient_accumulation_steps=1,
             warmup_ratio=0.1,
             max_steps=warmup_steps,
             learning_rate=2e-4,
@@ -788,6 +784,7 @@ def run_sft_warmup(
             bf16=torch.cuda.is_bf16_supported(),
             logging_steps=5,
             eval_strategy="no",
+            save_strategy="no",
             optim="adamw_torch_fused",
             weight_decay=0.05,
             max_grad_norm=1.0,
@@ -797,7 +794,6 @@ def run_sft_warmup(
             dataloader_num_workers=min(cpu_count(), 8),
             dataloader_pin_memory=True,
             gradient_checkpointing=True,
-            average_tokens_across_devices=False,
         ),
     )
     print("  Starting SFT warm-up...")
@@ -828,20 +824,15 @@ def run_grpo_phase(
     print(f"  GRPO dataset: {len(grpo_dataset)} samples "
           f"(bad oversampled {oversample_ratio}x)")
 
-    num_gpus = torch.cuda.device_count()
-    num_generations = 2
-    # Keep per_device at the minimum (== num_generations) so the generation
-    # batch is only num_generations sequences per GPU.  With seq_len=5000 a
-    # larger batch materialises a ~44 GB dense attention matrix and OOMs.
-    # Use gradient accumulation to recover effective batch size.
-    # Run with `accelerate launch --num_processes 2` to use both GPUs.
-    per_device = num_generations  # 2 – minimum valid GRPO batch
-    grad_accum = max(1, (4 if num_gpus >= 2 else 2))  # effective batch = 4–8×
+    # H200: single GPU, large VRAM — use generous generation width
+    num_generations = 8
+    per_device = num_generations
+    grad_accum = 2  # effective batch = 16
 
     grpo_args = GRPOConfig(
         output_dir=output_dir,
         max_prompt_length=MAX_SEQ_LENGTH - MAX_NEW_TOKENS_INFERENCE,
-        max_completion_length=MAX_NEW_TOKENS_INFERENCE,
+        max_completion_length=MAX_NEW_TOKENS_INFERENCE,  # 256 — room for full JSON + explanation
         num_generations=num_generations,
         temperature=0.7,
         beta=0.01,
@@ -852,7 +843,7 @@ def run_grpo_phase(
         fp16=not torch.cuda.is_bf16_supported(),
         bf16=torch.cuda.is_bf16_supported(),
         logging_steps=5,
-        save_steps=50,
+        save_strategy="no",
         warmup_ratio=0.05,
         optim="adamw_torch_fused",
         lr_scheduler_type="cosine",
@@ -861,11 +852,6 @@ def run_grpo_phase(
         scale_rewards=True,
         dataloader_drop_last=True,
         auto_find_batch_size=False,
-        use_vllm=True,
-        vllm_mode="server",
-        vllm_server_host="localhost",
-        vllm_server_port=8000,
-        vllm_server_timeout=300.0,
     )
 
     trainer = GRPOTrainer(
@@ -925,12 +911,12 @@ def train_fold(
     print("  Applying LoRA...")
     model = FastLanguageModel.get_peft_model(
         model,
-        r=32,
+        r=64,
         target_modules=[
             "q_proj", "k_proj", "v_proj", "o_proj",
             "gate_proj", "up_proj", "down_proj",
         ],
-        lora_alpha=64,
+        lora_alpha=128,
         lora_dropout=0.0,
         bias="none",
         use_gradient_checkpointing="unsloth",

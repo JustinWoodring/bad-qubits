@@ -1,1 +1,0 @@
-/home/justin_woodring/bad-qubits/dataset/qaoa_indep_qiskit_6.qasm

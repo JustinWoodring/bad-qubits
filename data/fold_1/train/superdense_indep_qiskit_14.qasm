@@ -1,1 +1,0 @@
-/home/justin_woodring/bad-qubits/dataset/superdense_indep_qiskit_14.qasm
