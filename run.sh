@@ -69,7 +69,11 @@ fi
 log "Checking dependencies..."
 if ! python -c "import unsloth" &>/dev/null; then
     log "unsloth not found — installing 2025.x release (PyTorch 2.4 compatible)..."
-    pip install "unsloth<2026" 2>&1 | while IFS= read -r line; do
+    # Lock torch at its current version so pip doesn't upgrade it to a version
+    # incompatible with the RunPod CUDA driver.
+    _TORCH_VER=$(python -c "import torch; print(torch.__version__)")
+    log "  Locking torch==$_TORCH_VER during install..."
+    pip install "unsloth<2026" "torch==$_TORCH_VER" 2>&1 | while IFS= read -r line; do
         echo "  [pip] $line"
     done
     log "unsloth install complete."
