@@ -25,6 +25,17 @@ from multiprocessing import cpu_count
 
 import torch
 
+# unsloth's compiled left_pack_padding calls torch.argsort on a bool attention
+# mask; CUDA does not support sorting bool tensors (RuntimeError). Patch argsort
+# globally to auto-cast bool inputs to int64 before sorting.
+_orig_torch_argsort = torch.argsort
+def _argsort_bool_safe(input, *args, **kwargs):
+    if input.dtype == torch.bool:
+        input = input.to(torch.int64)
+    return _orig_torch_argsort(input, *args, **kwargs)
+torch.argsort = _argsort_bool_safe
+del _orig_torch_argsort
+
 # torchao >= 0.7 uses torch.int1..int7 (added in PyTorch 2.5) as dict keys in
 # quant_primitives.py. Stub the whole range on PyTorch < 2.5 so newer
 # accelerate/torchao can be imported without crashing. We don't use sub-byte
