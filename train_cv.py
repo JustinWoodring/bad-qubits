@@ -834,10 +834,9 @@ def build_grpo_dataset(directory: str, oversample_ratio: int = 2) -> Dataset:
     Build prompt-only dataset with label/category metadata for GRPO.
     Bad circuits are oversampled by oversample_ratio to address class imbalance.
 
-    prompt is stored as a list of message dicts (TRL 0.13 conversation format)
-    so that TRL's GRPO collator tokenizes it correctly via apply_chat_template.
-    Passing a pre-formatted ChatML string causes TRL 0.13's internal data flow
-    to produce a list batch instead of a dict, breaking unsloth's compiled trainer.
+    prompt is a pre-formatted ChatML string (not a message list) so that TRL
+    0.15's maybe_apply_chat_template skips apply_chat_template, which rejects
+    extra columns like 'label' and 'category' when prompt is a message list.
     """
     safe_rows = []
     bad_rows = []
@@ -853,17 +852,13 @@ def build_grpo_dataset(directory: str, oversample_ratio: int = 2) -> Dataset:
         if len(escaped) > MAX_CIRCUIT_CHARS:
             escaped = escaped[:MAX_CIRCUIT_CHARS] + " [TRUNCATED]"
         props = extract_circuit_properties(content)
-        user_content = build_user_content(escaped, props)
+        prompt = create_inference_prompt_with_props(escaped, props)
         label = infer_label(os.path.basename(filename))
         category = infer_category(os.path.basename(filename))
-        row = {
-            "prompt": [
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_content},
-            ],
-            "label": label,
-            "category": category,
-        }
+        # prompt is a pre-formatted ChatML string (not a message list) so that
+        # TRL 0.15's maybe_apply_chat_template skips apply_chat_template key
+        # validation (which rejects extra columns like 'label'/'category').
+        row = {"prompt": prompt, "label": label, "category": category}
         if label == "safe":
             safe_rows.append(row)
         else:
