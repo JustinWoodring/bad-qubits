@@ -637,7 +637,7 @@ def reward_category(prompts, completions, **kwargs) -> list[float]:
     rewards = []
     for c, tl, tc in zip(completions, labels, categories):
         if tl == "safe":
-            rewards.append(float("nan"))  # excluded from weighted sum, completion still kept
+            rewards.append(0.0)  # no category reward for safe circuits; 0 is neutral
             continue
         parsed = _parse_json_output(c)
         if parsed is None:
@@ -887,6 +887,7 @@ def run_grpo_phase(
         seed=3407,
         reward_weights=[1.0, 0.3, 0.2, 0.2],
         scale_rewards=True,
+        max_grad_norm=0.3,
         dataloader_drop_last=True,
         auto_find_batch_size=False,
     )
