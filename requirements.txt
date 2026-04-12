@@ -9,11 +9,13 @@
 #   transformers < 4.52  : conservative cap; raise if a later version is verified
 #   accelerate   < 1.2   : 1.2+ hard-imports torchao (torch.int1, PyTorch 2.5+)
 #   torchao      < 0.7   : 0.7+ uses PyTorch 2.5-only APIs (torch.int2..int7, infer_schema)
-#   trl          < 0.15  : GRPO API stable in 0.12–0.14 range for unsloth 2025.x
+#   trl          < 0.13  : unsloth 2025.x compiled GRPO patcher expects TRL 0.12
+#                          format (prompt_ids/prompt_mask in compute_loss); TRL 0.13
+#                          refactored the internal data flow, breaking the patch
 
 llm-blender
 weave
-trl>=0.13.0,<0.15.0
+trl>=0.12.0,<0.13.0
 transformers>=4.47.0,<4.52.0
 peft>=0.13.0
 accelerate>=1.1.0,<1.2.0

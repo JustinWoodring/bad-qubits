@@ -79,7 +79,7 @@ if ! python -c "import unsloth" &>/dev/null; then
         "torch==$_TORCH_VER" \
         "transformers>=4.47.0,<4.52.0" \
         "accelerate>=1.1.0,<1.2.0" \
-        "trl>=0.13.0,<0.15.0" \
+        "trl>=0.12.0,<0.13.0" \
         "torchao<0.7.0" \
         2>&1 | while IFS= read -r line; do
         echo "  [pip] $line"
