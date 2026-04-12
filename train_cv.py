@@ -44,6 +44,17 @@ if not hasattr(_hub, "TRANSFORMERS_CACHE"):
         _os.path.join(_os.path.expanduser("~"), ".cache", "huggingface", "hub"),
     )
 
+# unsloth_zoo 2025.x imports PeftAdapterMixin from transformers.integrations,
+# which was moved to transformers.modeling_utils in transformers>=4.48.0.
+# Restore it at the old location before unsloth_zoo loads.
+import transformers.integrations as _ti
+if not hasattr(_ti, "PeftAdapterMixin"):
+    try:
+        from transformers.modeling_utils import PeftAdapterMixin as _PeftAdapterMixin
+        _ti.PeftAdapterMixin = _PeftAdapterMixin
+    except ImportError:
+        pass
+
 from unsloth import FastLanguageModel, PatchFastRL
 from datasets import Dataset
 from trl import SFTTrainer, GRPOTrainer, GRPOConfig
