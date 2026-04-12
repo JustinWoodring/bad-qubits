@@ -1,7 +1,10 @@
 # Base image: runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04
-# NOTE: run.sh auto-upgrades torch to >=2.5 (required by unsloth-zoo 2026.4+
-#       via torchao>=0.13.0 which uses torch.int1, added in PyTorch 2.5).
-# numpy is pre-installed — do NOT list it here.
+# torch and numpy are pre-installed — do NOT list them here or pip may upgrade
+# torch and break the CUDA linkage.
+#
+# unsloth is installed separately in run.sh (pinned to <2026 for PyTorch 2.4
+# compatibility). unsloth 2026.4+ requires torchao>=0.13.0 which needs
+# torch.int1 (PyTorch 2.5+), incompatible with the RunPod base image driver.
 #
 # unsloth is installed separately in run.sh before this file is processed.
 #
