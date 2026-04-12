@@ -97,6 +97,16 @@ MAX_SEQ_LENGTH = 8192
 MAX_CIRCUIT_CHARS = 7168  # ~7k chars of circuit text; leaves ~1k tokens for prompt wrapper
 MAX_NEW_TOKENS_INFERENCE = 256  # JSON with label + category + explanation; 256 gives full headroom
 
+# Qwen2.5-Coder uses ChatML: <|im_start|>role\ncontent<|im_end|>
+# This system prompt is prepended to every prompt (SFT and GRPO).
+SYSTEM_PROMPT = (
+    "You are a quantum circuit security analyst. "
+    "Analyze the given quantum circuit and respond with ONLY a JSON object containing: "
+    "\"safe\" (string: \"true\" or \"false\"), "
+    "\"category\" (string: \"safe\", \"immediate\", \"shuttling\", or \"mixed\"), "
+    "and \"explanation\" (string: 1-2 sentences describing the finding)."
+)
+
 
 # ---------------------------------------------------------------------------
 # CUDA setup (verbatim from source)
@@ -119,21 +129,26 @@ def setup_cuda():
 # ---------------------------------------------------------------------------
 
 def format_data_qwen(examples):
-    """Format chat messages into Qwen prompt strings for SFTTrainer."""
+    """Format chat messages into Qwen2.5 ChatML strings for SFTTrainer.
+
+    Qwen2.5-Coder uses ChatML: <|im_start|>role\\ncontent<|im_end|>
+    Using the wrong format (e.g. <|user|>) causes the model to treat role
+    tokens as plain text and never learn the expected output pattern.
+    """
     texts = []
     for messages in examples["messages"]:
-        formatted = ""
+        text = f"<|im_start|>system\n{SYSTEM_PROMPT}<|im_end|>\n"
         for msg in messages:
             if msg["role"] == "user":
-                formatted += f"<|user|>\n{msg['content']}<|endoftext|>\n"
+                text += f"<|im_start|>user\n{msg['content']}<|im_end|>\n"
             elif msg["role"] == "assistant":
-                formatted += f"<|assistant|>\n{msg['content']}<|endoftext|>"
-        texts.append(formatted)
+                text += f"<|im_start|>assistant\n{msg['content']}<|im_end|>\n"
+        texts.append(text)
     return {"text": texts}
 
 
 def create_inference_prompt_with_props(circuit_code: str, props: dict) -> str:
-    """Build Qwen inference prompt including structural circuit properties (no category hint)."""
+    """Build Qwen2.5 ChatML inference prompt with structural circuit properties."""
     swap = props["gate_counts"].get("swap", 0)
     measure = props["gate_counts"].get("measure", 0)
     total = props["num_gates"]
@@ -144,7 +159,11 @@ def create_inference_prompt_with_props(circuit_code: str, props: dict) -> str:
         f"swap={swap}, measure={measure}({mfrac}), top_gates={top5}]"
     )
     user_content = f"{summary}\n\nAnalyze this quantum circuit:\n{circuit_code}"
-    return f"<|user|>\n{user_content}<|endoftext|>\n<|assistant|>\n"
+    return (
+        f"<|im_start|>system\n{SYSTEM_PROMPT}<|im_end|>\n"
+        f"<|im_start|>user\n{user_content}<|im_end|>\n"
+        f"<|im_start|>assistant\n"
+    )
 
 
 # ---------------------------------------------------------------------------
