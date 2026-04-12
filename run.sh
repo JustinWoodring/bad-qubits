@@ -78,7 +78,7 @@ if ! python -c "import unsloth" &>/dev/null; then
         "unsloth-zoo<2026" \
         "torch==$_TORCH_VER" \
         "transformers>=4.47.0,<4.52.0" \
-        "accelerate>=1.0.0,<1.2.0" \
+        "accelerate>=1.1.0,<1.2.0" \
         "trl>=0.13.0,<0.15.0" \
         "torchao<0.7.0" \
         2>&1 | while IFS= read -r line; do

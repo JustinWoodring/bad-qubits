@@ -17,7 +17,7 @@ weave
 trl>=0.13.0,<0.15.0
 transformers>=4.47.0,<4.52.0
 peft>=0.13.0
-accelerate>=1.0.0,<1.2.0
+accelerate>=1.1.0,<1.2.0
 torchao<0.7.0
 bitsandbytes>=0.44.0
 datasets>=3.0.0
