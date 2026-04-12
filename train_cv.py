@@ -51,16 +51,20 @@ from unsloth.kernels import utils as _unsloth_utils
 import unsloth.kernels.fast_lora as _fast_lora_mod
 
 _orig_src = _inspect.getsource(_unsloth_utils.matmul_lora)
-_fixed_src = _orig_src.replace("B.to(dtype)", "B.to(XA.dtype)")
+# Fix 1: cast B to XA's dtype (not the internal `dtype` var derived from W_quant)
+# Fix 2: cast `out` (float32 from dequantised base weight) to XA's dtype too
+_fixed_src = _orig_src.replace(
+    "out.addmm_(XA, B.to(dtype), alpha = s)",
+    "out = out.to(XA.dtype); out.addmm_(XA, B.to(XA.dtype), alpha = s)",
+)
 if _fixed_src == _orig_src:
     import warnings
     warnings.warn("unsloth matmul_lora patch: target string not found — dtype mismatch may persist")
 else:
-    # Dedent so exec doesn't see unexpected indentation from the class/module
     import textwrap as _textwrap
     _fixed_src = _textwrap.dedent(_fixed_src)
-    exec(_fixed_src, _unsloth_utils.__dict__)  # replaces matmul_lora in utils
-    _fast_lora_mod.matmul_lora = _unsloth_utils.matmul_lora  # update fast_lora's ref
+    exec(_fixed_src, _unsloth_utils.__dict__)
+    _fast_lora_mod.matmul_lora = _unsloth_utils.matmul_lora
 
 from sklearn.metrics import (
     confusion_matrix, classification_report,
