@@ -58,11 +58,13 @@ else
 fi
 
 # ── dependency install ────────────────────────────────────────────────────────
-# Auto-installs on a fresh RunPod pod. Safe to re-run (pip is idempotent).
+# Installs anandn1's fork of unsloth which includes the fix for the
+# Half/Float dtype mismatch in GRPO training (upstream PR #4918).
+_UNSLOTH_FORK="git+https://github.com/anandn1/unsloth.git@fix/grpo-bnb4bit-bfloat16-dtype-mismatch"
 log "Checking dependencies..."
 if ! python -c "import unsloth" &>/dev/null; then
-    log "unsloth not found — installing unsloth (this may take a few minutes)..."
-    pip install unsloth 2>&1 | while IFS= read -r line; do
+    log "unsloth not found — installing from fork (this may take a few minutes)..."
+    pip install "$_UNSLOTH_FORK" 2>&1 | while IFS= read -r line; do
         echo "  [pip] $line"
     done
     log "unsloth install complete."
@@ -75,30 +77,6 @@ pip install -r "$SCRIPT_DIR/requirements.txt" 2>&1 | while IFS= read -r line; do
     echo "  [pip] $line"
 done
 log "Dependencies ready."
-
-# ── unsloth dtype patch (PR #4918) ───────────────────────────────────────────
-# Applies the upstream fix for dtype mismatches in matmul_lora / fast_lora
-# that crash GRPO training with "Half and Float" errors.
-log "Applying unsloth dtype patch (PR #4918)..."
-_UNSLOTH_PKG=$(python -c "import unsloth; import os; print(os.path.dirname(unsloth.__file__))" 2>/dev/null || true)
-if [[ -n "$_UNSLOTH_PKG" ]]; then
-    _PATCH_URL="https://patch-diff.githubusercontent.com/raw/unslothai/unsloth/pull/4918.patch"
-    _PATCH_FILE="/tmp/unsloth_4918.patch"
-    log "  Fetching patch from GitHub..."
-    if curl -fsSL "$_PATCH_URL" -o "$_PATCH_FILE"; then
-        # patch -p1 strips one path prefix; --forward skips already-applied hunks
-        if patch -p1 -d "$_UNSLOTH_PKG" --forward --dry-run < "$_PATCH_FILE" &>/dev/null; then
-            patch -p1 -d "$_UNSLOTH_PKG" --forward < "$_PATCH_FILE" 2>&1 | while IFS= read -r l; do echo "  [patch] $l"; done
-            log "  Patch applied successfully."
-        else
-            log "  Patch already applied or does not apply cleanly — skipping."
-        fi
-    else
-        log "  WARNING: could not fetch patch — skipping."
-    fi
-else
-    log "  WARNING: could not locate unsloth package — skipping patch."
-fi
 
 # ── defaults ──────────────────────────────────────────────────────────────────
 API_KEY=""
