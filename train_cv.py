@@ -24,6 +24,16 @@ from multiprocessing import cpu_count
 
 import torch
 
+# torch._inductor is a lazy namespace package in PyTorch 2.4; unsloth_zoo accesses
+# torch._inductor.config via attribute lookup which fails until the submodule is
+# explicitly imported. Force it here before unsloth is imported.
+try:
+    import torch._inductor.config as _torch_inductor_config
+    if not hasattr(torch._inductor, "config"):
+        torch._inductor.config = _torch_inductor_config
+except Exception:
+    pass
+
 # llm_blender (a trl transitive dep) references TRANSFORMERS_CACHE which was
 # removed in transformers >=4.43. Patch it back before trl is imported.
 import os as _os
