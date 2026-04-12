@@ -49,7 +49,9 @@ _orig_matmul_lora = _unsloth_kernel_utils.matmul_lora
 
 def _patched_matmul_lora(X, W, W_quant, A, B, s, out=None):
     _dt = X.dtype
-    return _orig_matmul_lora(X, W, W_quant, A.to(_dt), B.to(_dt), s, out)
+    A = A.to(_dt) if A is not None else A
+    B = B.to(_dt) if B is not None else B
+    return _orig_matmul_lora(X, W, W_quant, A, B, s, out)
 
 _unsloth_kernel_utils.matmul_lora = _patched_matmul_lora
 
