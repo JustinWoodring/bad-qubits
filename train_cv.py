@@ -14,6 +14,7 @@ Or directly: python train_cv.py [--fold N] [--data-dir data] [--results-dir resu
 """
 
 import os
+os.environ["WANDB_MODE"] = "disabled"
 import gc
 import re
 import json
