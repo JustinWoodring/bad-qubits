@@ -57,7 +57,7 @@ from generate_explanations import extract_circuit_properties
 # Constants
 # ---------------------------------------------------------------------------
 
-MODEL_NAME = "unsloth/Qwen2.5-Coder-7B"
+MODEL_NAME = "unsloth/Qwen2.5-Coder-7B-bnb-4bit"
 MAX_SEQ_LENGTH = 8192
 MAX_CIRCUIT_CHARS = 7168  # ~7k chars of circuit text; leaves ~1k tokens for prompt wrapper
 MAX_NEW_TOKENS_INFERENCE = 256  # JSON with label + category + explanation; 256 gives full headroom
@@ -911,8 +911,8 @@ def train_fold(
     model, tokenizer = FastLanguageModel.from_pretrained(
         model_name=MODEL_NAME,
         max_seq_length=MAX_SEQ_LENGTH,
-        dtype=torch.bfloat16,
-        load_in_4bit=False,
+        dtype=None,
+        load_in_4bit=True,
         device_map={"": torch.cuda.current_device()},
     )
     tokenizer.padding_side = "left"
