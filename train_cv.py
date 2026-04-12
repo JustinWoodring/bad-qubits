@@ -792,8 +792,8 @@ def run_sft_warmup(
             warmup_ratio=0.1,
             max_steps=warmup_steps,
             learning_rate=2e-4,
-            fp16=not torch.cuda.is_bf16_supported(),
-            bf16=torch.cuda.is_bf16_supported(),
+            fp16=False,
+            bf16=True,
             logging_steps=5,
             eval_strategy="no",
             save_strategy="no",
@@ -911,7 +911,7 @@ def train_fold(
     model, tokenizer = FastLanguageModel.from_pretrained(
         model_name=MODEL_NAME,
         max_seq_length=MAX_SEQ_LENGTH,
-        dtype=None,
+        dtype=torch.bfloat16,
         load_in_4bit=True,
         device_map={"": torch.cuda.current_device()},
     )
