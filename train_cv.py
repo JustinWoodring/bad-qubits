@@ -41,30 +41,26 @@ from transformers import TrainingArguments
 
 PatchFastRL("GRPO", FastLanguageModel)
 
-# Belt-and-suspenders dtype fix for unsloth's matmul_lora.
-# The fork (PR #4918) sets W_quant.dtype = X.dtype before dequantisation, but
-# A and B (PEFT float32 defaults) still mismatch on some pod configurations.
-# This patch combines both fixes: set W_quant.dtype AND cast A/B to X.dtype.
+# Patch unsloth's matmul_lora to cast B to XA's dtype instead of the internal
+# `dtype` variable (which comes from W_quant and is read-only on bnb Params4bit,
+# so it can't be overridden and stays float32 regardless of model dtype).
+# We use inspect.getsource to rewrite the function in-place so the fix applies
+# even inside gradient-checkpointing recomputation calls.
+import inspect as _inspect
 from unsloth.kernels import utils as _unsloth_utils
-_orig_matmul_lora = _unsloth_utils.matmul_lora
+import unsloth.kernels.fast_lora as _fast_lora_mod
 
-def _fixed_matmul_lora(X, W, W_quant, A, B, s, out=None):
-    _dt = X.dtype
-    if W_quant is not None and hasattr(W_quant, "dtype"):
-        try:
-            W_quant.dtype = _dt
-        except Exception:
-            pass
-    A = A.to(_dt) if A is not None else A
-    B = B.to(_dt) if B is not None else B
-    return _orig_matmul_lora(X, W, W_quant, A, B, s, out)
-
-_unsloth_utils.matmul_lora = _fixed_matmul_lora
-try:
-    import unsloth.kernels.fast_lora as _fast_lora
-    _fast_lora.matmul_lora = _fixed_matmul_lora
-except Exception:
-    pass
+_orig_src = _inspect.getsource(_unsloth_utils.matmul_lora)
+_fixed_src = _orig_src.replace("B.to(dtype)", "B.to(XA.dtype)")
+if _fixed_src == _orig_src:
+    import warnings
+    warnings.warn("unsloth matmul_lora patch: target string not found — dtype mismatch may persist")
+else:
+    # Dedent so exec doesn't see unexpected indentation from the class/module
+    import textwrap as _textwrap
+    _fixed_src = _textwrap.dedent(_fixed_src)
+    exec(_fixed_src, _unsloth_utils.__dict__)  # replaces matmul_lora in utils
+    _fast_lora_mod.matmul_lora = _unsloth_utils.matmul_lora  # update fast_lora's ref
 
 from sklearn.metrics import (
     confusion_matrix, classification_report,
