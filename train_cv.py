@@ -935,6 +935,19 @@ def train_fold(
         use_rslora=True,
         loftq_config=None,
     )
+
+    # PEFT initialises LoRA A/B as float32 regardless of base-model dtype.
+    # unsloth's fast_lora kernel derives `dtype` from A.dtype, so if A is fp32
+    # the kernel fails when base-model activations are bf16/fp16.
+    # Fix: register a pre-forward hook that keeps LoRA params in compute dtype
+    # before every forward pass, outlasting optimizer fp32 master-weight restores.
+    _compute_dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+    def _cast_lora_to_compute_dtype(module, args):
+        for param in module.parameters():
+            if param.requires_grad and param.dtype != _compute_dtype:
+                param.data = param.data.to(_compute_dtype)
+    model.register_forward_pre_hook(_cast_lora_to_compute_dtype)
+
     # Phase 1: SFT warm-up (teaches JSON output format)
     sft_output = os.path.join(model_output_dir, "sft_warmup")
     os.makedirs(sft_output, exist_ok=True)
