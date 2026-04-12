@@ -28,13 +28,11 @@ import torch
 # unsloth's compiled left_pack_padding calls torch.argsort on a bool attention
 # mask; CUDA does not support sorting bool tensors (RuntimeError). Patch argsort
 # globally to auto-cast bool inputs to int64 before sorting.
-_orig_torch_argsort = torch.argsort
-def _argsort_bool_safe(input, *args, **kwargs):
+def _argsort_bool_safe(input, *args, _orig=torch.argsort, **kwargs):
     if input.dtype == torch.bool:
         input = input.to(torch.int64)
-    return _orig_torch_argsort(input, *args, **kwargs)
+    return _orig(input, *args, **kwargs)
 torch.argsort = _argsort_bool_safe
-del _orig_torch_argsort
 
 # torchao >= 0.7 uses torch.int1..int7 (added in PyTorch 2.5) as dict keys in
 # quant_primitives.py. Stub the whole range on PyTorch < 2.5 so newer
