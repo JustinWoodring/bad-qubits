@@ -963,6 +963,64 @@ def run_sft_warmup(
 
 
 # ---------------------------------------------------------------------------
+# Compiled-cache patcher: ref_hidden_states=None guard
+# ---------------------------------------------------------------------------
+
+def _patch_grpo_ref_hidden_states() -> None:
+    """
+    Patch the compiled UnslothGRPOTrainer so that the inner compute_loss
+    handles ref_hidden_states=None (which happens when trainer.ref_model is
+    None, i.e. TRL 0.15 default for PEFT models).
+
+    The compiled code has:
+        ref_logits = torch.matmul(ref_hidden_states.to(lm_head.dtype), lm_head.t())
+    without guarding against None.  We replace it with an inline conditional
+    that falls back to the current model's hidden_states (detached) so the KL
+    term is effectively zero when there is no reference model.
+
+    Must be called AFTER GRPOTrainer() is instantiated (which generates the
+    cache) and BEFORE trainer.train() is called.
+    """
+    import sys, importlib
+
+    cache_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                             "unsloth_compiled_cache")
+    cache_file = os.path.join(cache_dir, "UnslothGRPOTrainer.py")
+    if not os.path.exists(cache_file):
+        return
+
+    with open(cache_file) as f:
+        src = f.read()
+
+    old = "ref_logits = torch.matmul(ref_hidden_states.to(lm_head.dtype), lm_head.t())"
+    new = (
+        "ref_logits = (torch.matmul(ref_hidden_states.to(lm_head.dtype), lm_head.t()) "
+        "if ref_hidden_states is not None "
+        "else torch.matmul(hidden_states.detach().to(lm_head.dtype), lm_head.t()))"
+    )
+
+    if old not in src:
+        return  # already patched or different version
+
+    fixed = src.replace(old, new)
+    with open(cache_file, "w") as f:
+        f.write(fixed)
+
+    # Re-exec the patched source into the already-loaded module's namespace
+    # so the in-memory compute_loss function picks up the fix.
+    for mod_name, mod in list(sys.modules.items()):
+        if "UnslothGRPOTrainer" in mod_name and hasattr(mod, "__file__"):
+            exec(compile(fixed, cache_file, "exec"), mod.__dict__)
+            # Rebind on GRPOTrainer class so the trainer instance sees it
+            from trl import GRPOTrainer as _GRPOTrainer
+            if hasattr(mod, "compute_loss"):
+                _GRPOTrainer.compute_loss = mod.compute_loss
+            break
+
+    print("  [patch] ref_hidden_states=None guard applied to compiled GRPO compute_loss")
+
+
+# ---------------------------------------------------------------------------
 # GRPO fine-tuning phase
 # ---------------------------------------------------------------------------
 
@@ -1026,6 +1084,7 @@ def run_grpo_phase(
         train_dataset=grpo_dataset,
         processing_class=tokenizer,
     )
+    _patch_grpo_ref_hidden_states()
     print("  Starting GRPO fine-tuning...")
     trainer.train()
     print("  GRPO fine-tuning complete.")
