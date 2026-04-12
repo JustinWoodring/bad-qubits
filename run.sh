@@ -77,6 +77,9 @@ if ! python -c "import unsloth" &>/dev/null; then
         echo "  [pip] $line"
     done
     log "unsloth install complete."
+    # Clear compiled cache so it regenerates for the newly installed version.
+    rm -rf "$SCRIPT_DIR/unsloth_compiled_cache"
+    log "Cleared unsloth_compiled_cache."
 else
     log "unsloth already installed, skipping."
 fi
