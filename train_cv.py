@@ -41,33 +41,6 @@ from transformers import TrainingArguments
 
 PatchFastRL("GRPO", FastLanguageModel)
 
-# Patch unsloth's matmul_lora to cast A and B to X's dtype before the matmul.
-# PEFT initialises LoRA weights as fp32; unsloth's kernel doesn't cast them,
-# so mixed-precision training fails with "Half and Float" dtype errors.
-from unsloth.kernels import utils as _unsloth_kernel_utils
-_orig_matmul_lora = _unsloth_kernel_utils.matmul_lora
-
-def _patched_matmul_lora(X, W, W_quant, A, B, s, out=None):
-    _dt = X.dtype
-    # Cast all plain tensors to X.dtype. unsloth's matmul_lora derives its
-    # internal `dtype` from W/W_quant, so they must match X to avoid the
-    # "Half and Float" error on out.addmm_. Skip bnb Params4bit objects.
-    if isinstance(W, torch.Tensor):
-        W = W.to(_dt)
-    if isinstance(W_quant, torch.Tensor):
-        W_quant = W_quant.to(_dt)
-    A = A.to(_dt) if A is not None else A
-    B = B.to(_dt) if B is not None else B
-    return _orig_matmul_lora(X, W, W_quant, A, B, s, out)
-
-_unsloth_kernel_utils.matmul_lora = _patched_matmul_lora
-
-# Also patch the reference in fast_lora which may have been imported already
-try:
-    import unsloth.kernels.fast_lora as _fast_lora
-    _fast_lora.matmul_lora = _patched_matmul_lora
-except Exception:
-    pass
 from sklearn.metrics import (
     confusion_matrix, classification_report,
     accuracy_score, precision_recall_fscore_support,

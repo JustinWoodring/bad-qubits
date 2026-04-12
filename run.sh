@@ -76,6 +76,24 @@ pip install -r "$SCRIPT_DIR/requirements.txt" 2>&1 | while IFS= read -r line; do
 done
 log "Dependencies ready."
 
+# ── unsloth dtype patch ───────────────────────────────────────────────────────
+# unsloth/kernels/utils.py matmul_lora derives `dtype` from W_quant metadata
+# that is often float32, then calls B.to(dtype) while `out` is fp16/bf16 —
+# causing a dtype mismatch crash during GRPO training (unsloth PR #4918).
+# Patch the installed file to cast B to out.dtype instead.
+log "Applying unsloth matmul_lora dtype patch..."
+_UNSLOTH_UTILS=$(python -c "import unsloth.kernels.utils; print(unsloth.kernels.utils.__file__)" 2>/dev/null || true)
+if [[ -n "$_UNSLOTH_UTILS" && -f "$_UNSLOTH_UTILS" ]]; then
+    if grep -q "out\.addmm_(XA, B\.to(dtype)" "$_UNSLOTH_UTILS"; then
+        sed -i 's/out\.addmm_(XA, B\.to(dtype)/out.addmm_(XA, B.to(out.dtype)/g' "$_UNSLOTH_UTILS"
+        log "  Patched: B.to(dtype) → B.to(out.dtype) in $( basename "$_UNSLOTH_UTILS" )"
+    else
+        log "  Patch already applied or line not found — skipping."
+    fi
+else
+    log "  WARNING: could not locate unsloth/kernels/utils.py — skipping patch."
+fi
+
 # ── defaults ──────────────────────────────────────────────────────────────────
 API_KEY=""
 FOLD=""
