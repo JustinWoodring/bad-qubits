@@ -58,6 +58,19 @@ else
 fi
 
 # ── dependency install ────────────────────────────────────────────────────────
+# unsloth-zoo 2026.4+ requires torchao>=0.13.0 which requires PyTorch>=2.5.
+# The RunPod base image ships with PyTorch 2.4 — upgrade it first if needed.
+log "Checking PyTorch version..."
+if ! python -c "import torch; v=torch.__version__.split('.')[:2]; assert (int(v[0]),int(v[1])) >= (2,5)" 2>/dev/null; then
+    log "PyTorch < 2.5 detected — upgrading to 2.5+ (needed by unsloth-zoo 2026.4+)..."
+    pip install --upgrade "torch>=2.5.0" --extra-index-url https://download.pytorch.org/whl/cu124 2>&1 | while IFS= read -r line; do
+        echo "  [pip] $line"
+    done
+    log "PyTorch upgrade complete."
+else
+    log "PyTorch >= 2.5 already installed, skipping upgrade."
+fi
+
 # Installs anandn1's fork of unsloth which includes the fix for the
 # Half/Float dtype mismatch in GRPO training (upstream PR #4918).
 _UNSLOTH_FORK="git+https://github.com/anandn1/unsloth.git@fix/grpo-bnb4bit-bfloat16-dtype-mismatch"
