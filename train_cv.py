@@ -608,7 +608,7 @@ def reward_classification(prompts, completions, **kwargs) -> list[float]:
             continue
         safe_val = str(parsed.get("safe", "")).lower().strip()
         pred = "safe" if safe_val == "true" else "bad"
-        rewards.append(1.0 if pred == true_label else -1.0)
+        rewards.append(1.0 if pred == true_label else -1.5)
     return rewards
 
 
@@ -880,8 +880,8 @@ def run_grpo_phase(
         max_prompt_length=MAX_SEQ_LENGTH - MAX_NEW_TOKENS_INFERENCE,
         max_completion_length=MAX_NEW_TOKENS_INFERENCE,  # 256 — room for full JSON + explanation
         num_generations=num_generations,
-        temperature=0.7,
-        beta=0.01,
+        temperature=0.9,
+        beta=0.1,
         per_device_train_batch_size=per_device,
         gradient_accumulation_steps=grad_accum,
         max_steps=grpo_steps,
