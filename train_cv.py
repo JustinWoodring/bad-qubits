@@ -44,16 +44,22 @@ if not hasattr(_hub, "TRANSFORMERS_CACHE"):
         _os.path.join(_os.path.expanduser("~"), ".cache", "huggingface", "hub"),
     )
 
-# unsloth_zoo 2025.x imports PeftAdapterMixin from transformers.integrations,
-# which was moved to transformers.modeling_utils in transformers>=4.48.0.
-# Restore it at the old location before unsloth_zoo loads.
+# In some transformers versions PeftAdapterMixin is missing from
+# transformers.integrations.__init__, but transformers.modeling_utils itself
+# also imports it from there — causing a circular import failure.
+# Strategy: inject a stub FIRST so modeling_utils can load, then try to
+# replace the stub with the real class from transformers.integrations.peft.
 import transformers.integrations as _ti
 if not hasattr(_ti, "PeftAdapterMixin"):
+    class _PeftAdapterMixin:
+        """Compatibility stub — replaced below if the real class is available."""
+    _ti.PeftAdapterMixin = _PeftAdapterMixin
     try:
-        from transformers.modeling_utils import PeftAdapterMixin as _PeftAdapterMixin
-        _ti.PeftAdapterMixin = _PeftAdapterMixin
-    except ImportError:
-        pass
+        import importlib as _importlib
+        _ip = _importlib.import_module("transformers.integrations.peft")
+        _ti.PeftAdapterMixin = _ip.PeftAdapterMixin
+    except Exception:
+        pass  # keep the stub; unsloth_zoo only needs the name to exist
 
 from unsloth import FastLanguageModel, PatchFastRL
 from datasets import Dataset
