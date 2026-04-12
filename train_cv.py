@@ -49,6 +49,13 @@ _orig_matmul_lora = _unsloth_kernel_utils.matmul_lora
 
 def _patched_matmul_lora(X, W, W_quant, A, B, s, out=None):
     _dt = X.dtype
+    # Cast all plain tensors to X.dtype. unsloth's matmul_lora derives its
+    # internal `dtype` from W/W_quant, so they must match X to avoid the
+    # "Half and Float" error on out.addmm_. Skip bnb Params4bit objects.
+    if isinstance(W, torch.Tensor):
+        W = W.to(_dt)
+    if isinstance(W_quant, torch.Tensor):
+        W_quant = W_quant.to(_dt)
     A = A.to(_dt) if A is not None else A
     B = B.to(_dt) if B is not None else B
     return _orig_matmul_lora(X, W, W_quant, A, B, s, out)
