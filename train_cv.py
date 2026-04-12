@@ -996,7 +996,7 @@ def _patch_grpo_ref_hidden_states() -> None:
     new = (
         "ref_logits = (torch.matmul(ref_hidden_states.to(lm_head.dtype), lm_head.t()) "
         "if ref_hidden_states is not None "
-        "else torch.matmul(hidden_states.detach().to(lm_head.dtype), lm_head.t()))"
+        "else torch.matmul(new_hidden_states.detach().to(lm_head.dtype), lm_head.t()))"
     )
 
     if old not in src:
