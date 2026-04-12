@@ -831,6 +831,12 @@ def run_grpo_phase(
     explanation wording — the model is never penalized for correctly detecting
     a benign circuit.
     """
+    # Re-cast LoRA weights: the SFT optimizer may have restored them to fp32.
+    _compute_dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+    for param in model.parameters():
+        if param.requires_grad:
+            param.data = param.data.to(_compute_dtype)
+
     grpo_dataset = build_grpo_dataset(train_dir, oversample_ratio=oversample_ratio)
     print(f"  GRPO dataset: {len(grpo_dataset)} samples "
           f"(bad oversampled {oversample_ratio}x)")
