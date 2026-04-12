@@ -41,6 +41,31 @@ from transformers import TrainingArguments
 
 PatchFastRL("GRPO", FastLanguageModel)
 
+# Belt-and-suspenders dtype fix for unsloth's matmul_lora.
+# The fork (PR #4918) sets W_quant.dtype = X.dtype before dequantisation, but
+# A and B (PEFT float32 defaults) still mismatch on some pod configurations.
+# This patch combines both fixes: set W_quant.dtype AND cast A/B to X.dtype.
+from unsloth.kernels import utils as _unsloth_utils
+_orig_matmul_lora = _unsloth_utils.matmul_lora
+
+def _fixed_matmul_lora(X, W, W_quant, A, B, s, out=None):
+    _dt = X.dtype
+    if W_quant is not None and hasattr(W_quant, "dtype"):
+        try:
+            W_quant.dtype = _dt
+        except Exception:
+            pass
+    A = A.to(_dt) if A is not None else A
+    B = B.to(_dt) if B is not None else B
+    return _orig_matmul_lora(X, W, W_quant, A, B, s, out)
+
+_unsloth_utils.matmul_lora = _fixed_matmul_lora
+try:
+    import unsloth.kernels.fast_lora as _fast_lora
+    _fast_lora.matmul_lora = _fixed_matmul_lora
+except Exception:
+    pass
+
 from sklearn.metrics import (
     confusion_matrix, classification_report,
     accuracy_score, precision_recall_fscore_support,
