@@ -590,26 +590,25 @@ def _parse_json_output(completion: str) -> dict | None:
 
 def reward_classification(prompts, completions, **kwargs) -> list[float]:
     """
-    Primary reward: +1.0 for correct safe/bad label, -0.5/-0.8 for wrong.
+    Primary reward: +1.0 correct, -1.0 wrong.
 
-    Key invariant: safe circuits predicted as safe ALWAYS get +1.0 regardless
-    of explanation content. The model is never penalized for correctly identifying
-    a circuit as benign.
+    Symmetric penalties are critical: with balanced training data (bad
+    oversampled 2x), the degenerate "always predict bad" strategy must
+    have zero expected reward so GRPO cannot exploit it.
+
+    False-negative avoidance is handled via 2x oversampling of bad
+    circuits in the GRPO dataset, not via asymmetric reward penalties.
     """
     labels = kwargs.get("label", [])
     rewards = []
     for completion, true_label in zip(completions, labels):
         parsed = _parse_json_output(completion)
         if parsed is None:
-            rewards.append(-0.5)
+            rewards.append(-1.0)
             continue
         safe_val = str(parsed.get("safe", "")).lower().strip()
         pred = "safe" if safe_val == "true" else "bad"
-        if pred == true_label:
-            rewards.append(1.0)
-        else:
-            # Penalize bad-circuit misses more harshly (class imbalance compensation)
-            rewards.append(-0.8 if true_label == "bad" else -0.5)
+        rewards.append(1.0 if pred == true_label else -1.0)
     return rewards
 
 

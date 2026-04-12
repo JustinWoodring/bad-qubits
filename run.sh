@@ -93,7 +93,7 @@ log "Dependencies ready."
 # ── defaults ──────────────────────────────────────────────────────────────────
 API_KEY=""
 FOLD=""
-SFT_STEPS=60
+SFT_STEPS=150
 GRPO_STEPS=200
 SKIP_EXPLAIN=0
 LIMIT=""
