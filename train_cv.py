@@ -39,6 +39,40 @@ for _intN in ["int1", "int2", "int3", "int4", "int5", "int6", "int7"]:
         del _stub
 del _intN
 
+# transformers>=4.47 imports a torchao quantizer module that expects symbols
+# introduced in torchao>=0.7 (which requires PyTorch 2.5). We use bitsandbytes
+# quantization, not torchao, so stub the entire set of missing symbols so the
+# import succeeds without any functional impact.
+try:
+    import torchao.quantization as _tq
+    _TORCHAO_STUBS = [
+        "Int4WeightOnlyConfig", "Int8WeightOnlyConfig",
+        "Float8WeightOnlyConfig", "Float8DynamicActivationFloat8WeightConfig",
+        "Int8DynamicActivationInt4WeightConfig", "Int8DynamicActivationInt8WeightConfig",
+        "FbgemmFp8Config",
+    ]
+    for _name in _TORCHAO_STUBS:
+        if not hasattr(_tq, _name):
+            setattr(_tq, _name, type(_name, (), {"__init__": lambda self, **kw: None}))
+    # quantize_ must be callable
+    if not hasattr(_tq, "quantize_"):
+        _tq.quantize_ = lambda *a, **kw: None
+    # granularity objects used by quantizer_torchao
+    try:
+        import torchao.quantization.granularity as _tqg
+        for _gname in ["PerRow", "PerTensor"]:
+            if not hasattr(_tqg, _gname):
+                setattr(_tqg, _gname, type(_gname, (), {}))
+        if not hasattr(_tq, "PerRow"):
+            _tq.PerRow = _tqg.PerRow
+        if not hasattr(_tq, "PerTensor"):
+            _tq.PerTensor = _tqg.PerTensor
+    except Exception:
+        pass
+    del _tq, _TORCHAO_STUBS, _name
+except ImportError:
+    pass
+
 # torch._inductor is a lazy namespace package in PyTorch 2.4; unsloth_zoo accesses
 # torch._inductor.config via attribute lookup which fails until the submodule is
 # explicitly imported. Force it here before unsloth is imported.
