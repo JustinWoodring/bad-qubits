@@ -24,6 +24,19 @@ from multiprocessing import cpu_count
 
 import torch
 
+# torchao >= 0.7 uses torch.int1 (added in PyTorch 2.5) as a dict key in
+# quant_primitives.py. Stub it on PyTorch < 2.5 so newer accelerate/torchao
+# can be imported without crashing. We don't use int1 quantization so the
+# stub has no functional effect beyond allowing the import to complete.
+if not hasattr(torch, "int1"):
+    _int1_stub = type("_TorchInt1Stub", (), {
+        "__repr__": lambda self: "torch.int1",
+        "__hash__": lambda self: hash("_torch_int1_stub"),
+        "__eq__": lambda self, other: self is other,
+    })()
+    torch.int1 = _int1_stub
+    del _int1_stub
+
 # torch._inductor is a lazy namespace package in PyTorch 2.4; unsloth_zoo accesses
 # torch._inductor.config via attribute lookup which fails until the submodule is
 # explicitly imported. Force it here before unsloth is imported.
