@@ -979,7 +979,6 @@ def run_grpo_phase(
         optim="adamw_torch_fused",
         lr_scheduler_type="cosine",
         seed=3407,
-        reward_weights=[1.0, 0.3, 0.2, 0.2],
         scale_rewards=True,
         max_grad_norm=0.3,
         dataloader_drop_last=True,
