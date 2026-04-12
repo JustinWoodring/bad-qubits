@@ -35,11 +35,12 @@ def _argsort_bool_safe(input, *args, _orig=torch.argsort, **kwargs):
 torch.argsort = _argsort_bool_safe
 
 # unsloth's compiled accumulate_chunk is decorated with @torch.compile. On
-# PyTorch 2.4, TorchDynamo symbolic-traces ref_hidden_states as a None constant
-# (when trainer.ref_model is None) and then fails on None.to(). Suppress
-# compilation errors so dynamo falls back to eager execution for that kernel.
+# PyTorch 2.4, TorchDynamo symbolically traces ref_hidden_states as a None
+# constant and raises InternalTorchDynamoError on None.to(). suppress_errors
+# does not catch InternalTorchDynamoError in PyTorch 2.4 — fully disable dynamo.
 import torch._dynamo as _dynamo
-_dynamo.config.suppress_errors = True
+_dynamo.config.disable = True
+_dynamo.config.suppress_errors = True  # belt-and-suspenders
 
 # torchao >= 0.7 uses torch.int1..int7 (added in PyTorch 2.5) as dict keys in
 # quant_primitives.py. Stub the whole range on PyTorch < 2.5 so newer
