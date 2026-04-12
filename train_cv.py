@@ -56,7 +56,7 @@ from generate_explanations import extract_circuit_properties
 # Constants
 # ---------------------------------------------------------------------------
 
-MODEL_NAME = "unsloth/Qwen2.5-Coder-7B-bnb-4bit"
+MODEL_NAME = "unsloth/Qwen2.5-Coder-7B"
 MAX_SEQ_LENGTH = 8192
 MAX_CIRCUIT_CHARS = 7168  # ~7k chars of circuit text; leaves ~1k tokens for prompt wrapper
 MAX_NEW_TOKENS_INFERENCE = 256  # JSON with label + category + explanation; 256 gives full headroom
@@ -831,12 +831,6 @@ def run_grpo_phase(
     explanation wording — the model is never penalized for correctly detecting
     a benign circuit.
     """
-    # Re-cast LoRA weights: the SFT optimizer may have restored them to fp32.
-    _compute_dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
-    for param in model.parameters():
-        if param.requires_grad:
-            param.data = param.data.to(_compute_dtype)
-
     grpo_dataset = build_grpo_dataset(train_dir, oversample_ratio=oversample_ratio)
     print(f"  GRPO dataset: {len(grpo_dataset)} samples "
           f"(bad oversampled {oversample_ratio}x)")
@@ -883,11 +877,6 @@ def run_grpo_phase(
         train_dataset=grpo_dataset,
         processing_class=tokenizer,
     )
-    # GRPOTrainer.__init__ may restore LoRA params to fp32; cast again right before training.
-    _compute_dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
-    for param in model.parameters():
-        if param.requires_grad:
-            param.data = param.data.to(_compute_dtype)
     print("  Starting GRPO fine-tuning...")
     trainer.train()
     print("  GRPO fine-tuning complete.")
@@ -921,8 +910,8 @@ def train_fold(
     model, tokenizer = FastLanguageModel.from_pretrained(
         model_name=MODEL_NAME,
         max_seq_length=MAX_SEQ_LENGTH,
-        dtype=None,
-        load_in_4bit=True,
+        dtype=torch.bfloat16,
+        load_in_4bit=False,
         device_map={"": torch.cuda.current_device()},
     )
     tokenizer.padding_side = "left"
@@ -946,13 +935,6 @@ def train_fold(
         use_rslora=True,
         loftq_config=None,
     )
-    # Cast LoRA trainable weights to match the model's compute dtype so unsloth's
-    # fast_lora kernel doesn't raise a dtype mismatch at runtime.
-    _compute_dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
-    for param in model.parameters():
-        if param.requires_grad:
-            param.data = param.data.to(_compute_dtype)
-
     # Phase 1: SFT warm-up (teaches JSON output format)
     sft_output = os.path.join(model_output_dir, "sft_warmup")
     os.makedirs(sft_output, exist_ok=True)
