@@ -577,7 +577,15 @@ def evaluate_fold(
         filenames.append(os.path.basename(filename))
 
     if torch.cuda.is_available():
+        torch.cuda.synchronize()
         torch.cuda.empty_cache()
+
+    # After GRPO training the model is in training mode and unsloth's custom
+    # CUDA kernels (fast_rope_embedding etc.) can hit illegal memory access.
+    # for_inference() reconfigures the model for inference and flushes state.
+    from unsloth import FastLanguageModel
+    FastLanguageModel.for_inference(model)
+    model.eval()
 
     start = time.time()
     predictions = batch_classify_quantum_circuits(model, tokenizer, circuit_codes, circuit_props_list)
