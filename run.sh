@@ -76,22 +76,28 @@ pip install -r "$SCRIPT_DIR/requirements.txt" 2>&1 | while IFS= read -r line; do
 done
 log "Dependencies ready."
 
-# ── unsloth dtype patch ───────────────────────────────────────────────────────
-# unsloth/kernels/utils.py matmul_lora derives `dtype` from W_quant metadata
-# that is often float32, then calls B.to(dtype) while `out` is fp16/bf16 —
-# causing a dtype mismatch crash during GRPO training (unsloth PR #4918).
-# Patch the installed file to cast B to out.dtype instead.
-log "Applying unsloth matmul_lora dtype patch..."
-_UNSLOTH_UTILS=$(python -c "import unsloth.kernels.utils; print(unsloth.kernels.utils.__file__)" 2>/dev/null || true)
-if [[ -n "$_UNSLOTH_UTILS" && -f "$_UNSLOTH_UTILS" ]]; then
-    if grep -q "out\.addmm_(XA, B\.to(dtype)" "$_UNSLOTH_UTILS"; then
-        sed -i 's/out\.addmm_(XA, B\.to(dtype)/out.addmm_(XA, B.to(out.dtype)/g' "$_UNSLOTH_UTILS"
-        log "  Patched: B.to(dtype) → B.to(out.dtype) in $( basename "$_UNSLOTH_UTILS" )"
+# ── unsloth dtype patch (PR #4918) ───────────────────────────────────────────
+# Applies the upstream fix for dtype mismatches in matmul_lora / fast_lora
+# that crash GRPO training with "Half and Float" errors.
+log "Applying unsloth dtype patch (PR #4918)..."
+_UNSLOTH_PKG=$(python -c "import unsloth; import os; print(os.path.dirname(unsloth.__file__))" 2>/dev/null || true)
+if [[ -n "$_UNSLOTH_PKG" ]]; then
+    _PATCH_URL="https://patch-diff.githubusercontent.com/raw/unslothai/unsloth/pull/4918.patch"
+    _PATCH_FILE="/tmp/unsloth_4918.patch"
+    log "  Fetching patch from GitHub..."
+    if curl -fsSL "$_PATCH_URL" -o "$_PATCH_FILE"; then
+        # patch -p1 strips one path prefix; --forward skips already-applied hunks
+        if patch -p1 -d "$_UNSLOTH_PKG" --forward --dry-run < "$_PATCH_FILE" &>/dev/null; then
+            patch -p1 -d "$_UNSLOTH_PKG" --forward < "$_PATCH_FILE" 2>&1 | while IFS= read -r l; do echo "  [patch] $l"; done
+            log "  Patch applied successfully."
+        else
+            log "  Patch already applied or does not apply cleanly — skipping."
+        fi
     else
-        log "  Patch already applied or line not found — skipping."
+        log "  WARNING: could not fetch patch — skipping."
     fi
 else
-    log "  WARNING: could not locate unsloth/kernels/utils.py — skipping patch."
+    log "  WARNING: could not locate unsloth package — skipping patch."
 fi
 
 # ── defaults ──────────────────────────────────────────────────────────────────
