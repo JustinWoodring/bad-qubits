@@ -883,6 +883,11 @@ def run_grpo_phase(
         train_dataset=grpo_dataset,
         processing_class=tokenizer,
     )
+    # GRPOTrainer.__init__ may restore LoRA params to fp32; cast again right before training.
+    _compute_dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+    for param in model.parameters():
+        if param.requires_grad:
+            param.data = param.data.to(_compute_dtype)
     print("  Starting GRPO fine-tuning...")
     trainer.train()
     print("  GRPO fine-tuning complete.")
