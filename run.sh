@@ -72,8 +72,8 @@ if ! python -c "import unsloth" &>/dev/null; then
     # Lock torch at its current version so pip doesn't upgrade it to a version
     # incompatible with the RunPod CUDA driver.
     _TORCH_VER=$(python -c "import torch; print(torch.__version__)")
-    log "  Locking torch==$_TORCH_VER during install..."
-    pip install "unsloth<2026" "torch==$_TORCH_VER" 2>&1 | while IFS= read -r line; do
+    log "  Locking torch==$_TORCH_VER and unsloth-zoo<2026 during install..."
+    pip install "unsloth<2026" "unsloth-zoo<2026" "torch==$_TORCH_VER" 2>&1 | while IFS= read -r line; do
         echo "  [pip] $line"
     done
     log "unsloth install complete."
