@@ -214,8 +214,8 @@ def format_data_qwen(examples):
     return {"text": texts}
 
 
-def create_inference_prompt_with_props(circuit_code: str, props: dict) -> str:
-    """Build Qwen2.5 ChatML inference prompt with structural circuit properties."""
+def build_user_content(circuit_code: str, props: dict) -> str:
+    """Build the user message content string from circuit code and properties."""
     swap = props["gate_counts"].get("swap", 0)
     measure = props["gate_counts"].get("measure", 0)
     total = props["num_gates"]
@@ -225,7 +225,12 @@ def create_inference_prompt_with_props(circuit_code: str, props: dict) -> str:
         f"[Circuit: qubits={props['num_qubits']}, gates={total}, "
         f"swap={swap}, measure={measure}({mfrac}), top_gates={top5}]"
     )
-    user_content = f"{summary}\n\nAnalyze this quantum circuit:\n{circuit_code}"
+    return f"{summary}\n\nAnalyze this quantum circuit:\n{circuit_code}"
+
+
+def create_inference_prompt_with_props(circuit_code: str, props: dict) -> str:
+    """Build Qwen2.5 ChatML inference prompt with structural circuit properties."""
+    user_content = build_user_content(circuit_code, props)
     return (
         f"<|im_start|>system\n{SYSTEM_PROMPT}<|im_end|>\n"
         f"<|im_start|>user\n{user_content}<|im_end|>\n"
@@ -828,6 +833,11 @@ def build_grpo_dataset(directory: str, oversample_ratio: int = 2) -> Dataset:
     """
     Build prompt-only dataset with label/category metadata for GRPO.
     Bad circuits are oversampled by oversample_ratio to address class imbalance.
+
+    prompt is stored as a list of message dicts (TRL 0.13 conversation format)
+    so that TRL's GRPO collator tokenizes it correctly via apply_chat_template.
+    Passing a pre-formatted ChatML string causes TRL 0.13's internal data flow
+    to produce a list batch instead of a dict, breaking unsloth's compiled trainer.
     """
     safe_rows = []
     bad_rows = []
@@ -843,10 +853,17 @@ def build_grpo_dataset(directory: str, oversample_ratio: int = 2) -> Dataset:
         if len(escaped) > MAX_CIRCUIT_CHARS:
             escaped = escaped[:MAX_CIRCUIT_CHARS] + " [TRUNCATED]"
         props = extract_circuit_properties(content)
-        prompt = create_inference_prompt_with_props(escaped, props)
+        user_content = build_user_content(escaped, props)
         label = infer_label(os.path.basename(filename))
         category = infer_category(os.path.basename(filename))
-        row = {"prompt": prompt, "label": label, "category": category}
+        row = {
+            "prompt": [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": user_content},
+            ],
+            "label": label,
+            "category": category,
+        }
         if label == "safe":
             safe_rows.append(row)
         else:
