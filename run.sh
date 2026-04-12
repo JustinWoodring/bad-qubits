@@ -189,6 +189,16 @@ else
 fi
 
 # ── STEP 3: train ─────────────────────────────────────────────────────────────
+# Always clear the unsloth compiled cache before training so it regenerates
+# from the currently-installed TRL/transformers/accelerate versions. A stale
+# cache causes dtype mismatches and "list indices must be integers" errors when
+# dependency versions have changed since the cache was last built.
+if [[ -d "$SCRIPT_DIR/unsloth_compiled_cache" ]]; then
+    log "Clearing unsloth_compiled_cache (stale cache causes GRPO errors after dep upgrades)..."
+    rm -rf "$SCRIPT_DIR/unsloth_compiled_cache"
+    log "Cleared."
+fi
+
 step "[3/5] Train — SFT + GRPO${FOLD:+, fold $FOLD only}"
 _STEP_START=$(date +%s)
 log "SFT steps: $SFT_STEPS  |  GRPO steps: $GRPO_STEPS"
