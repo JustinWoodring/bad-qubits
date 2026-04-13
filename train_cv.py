@@ -133,7 +133,11 @@ from datasets import Dataset
 from trl import SFTTrainer, GRPOTrainer, GRPOConfig
 from transformers import TrainingArguments
 
-PatchFastRL("GRPO", FastLanguageModel)
+# Skip GRPO patches in the eval subprocess — PatchFastRL installs training-specific
+# behaviour that for_inference() may not fully undo, potentially causing kernel
+# crashes during batch inference.  Set BAD_QUBITS_EVAL=1 to suppress the patch.
+if not os.environ.get("BAD_QUBITS_EVAL"):
+    PatchFastRL("GRPO", FastLanguageModel)
 
 # Patch unsloth's matmul_lora to cast B to XA's dtype instead of the internal
 # `dtype` variable (which comes from W_quant and is read-only on bnb Params4bit,
@@ -1221,8 +1225,17 @@ def train_fold(
     if test_dir and os.path.isdir(test_dir):
         cmd += ["--test-dir", test_dir]
 
+    # BAD_QUBITS_EVAL=1   → skips PatchFastRL (GRPO training patches) in train_cv.py
+    # CUDA_LAUNCH_BLOCKING=1 → makes CUDA kernels synchronous so async errors are
+    #   reported at the exact kernel call (not deferred to a later synchronize),
+    #   which both gives an accurate traceback AND prevents the race where a kernel
+    #   on unsloth's custom stream uses memory that was freed by the main stream.
+    eval_env = os.environ.copy()
+    eval_env["BAD_QUBITS_EVAL"] = "1"
+    eval_env["CUDA_LAUNCH_BLOCKING"] = "1"
+
     print(f"  Spawning eval subprocess for fold {fold_num}...")
-    result = _subprocess.run(cmd, check=False)
+    result = _subprocess.run(cmd, check=False, env=eval_env)
     if result.returncode != 0:
         print(f"  WARNING: eval subprocess exited with code {result.returncode} — "
               f"check logs above.  Training results are saved; metrics may be incomplete.")
