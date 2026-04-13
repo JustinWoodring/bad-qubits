@@ -34,13 +34,12 @@ def _argsort_bool_safe(input, *args, _orig=torch.argsort, **kwargs):
     return _orig(input, *args, **kwargs)
 torch.argsort = _argsort_bool_safe
 
-# unsloth's compiled accumulate_chunk is decorated with @torch.compile. On
-# PyTorch 2.4, TorchDynamo symbolically traces ref_hidden_states as a None
-# constant and raises InternalTorchDynamoError on None.to(). suppress_errors
-# does not catch InternalTorchDynamoError in PyTorch 2.4 — fully disable dynamo.
+# suppress_errors lets dynamo fall back to eager on any compilation error,
+# avoiding InternalTorchDynamoError without disabling dynamo globally.
+# NOTE: do NOT set _dynamo.config.disable=True — it breaks unsloth's
+# fast_rope_embedding CUDA kernel and causes illegal memory access.
 import torch._dynamo as _dynamo
-_dynamo.config.disable = True
-_dynamo.config.suppress_errors = True  # belt-and-suspenders
+_dynamo.config.suppress_errors = True
 
 # torchao >= 0.7 uses torch.int1..int7 (added in PyTorch 2.5) as dict keys in
 # quant_primitives.py. Stub the whole range on PyTorch < 2.5 so newer
@@ -1004,7 +1003,7 @@ def _patch_grpo_ref_hidden_states() -> None:
     new = (
         "ref_logits = (torch.matmul(ref_hidden_states.to(lm_head.dtype), lm_head.t()) "
         "if ref_hidden_states is not None "
-        "else torch.matmul(new_hidden_states.detach().to(lm_head.dtype), lm_head.t()))"
+        "else torch.matmul(new_hidden_states.to(lm_head.dtype), lm_head.t()))"
     )
 
     if old not in src:
