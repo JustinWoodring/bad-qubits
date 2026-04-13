@@ -1179,11 +1179,28 @@ def train_fold(
     tokenizer.save_pretrained(model_output_dir)
     print(f"  Model saved to {model_output_dir}/")
 
-    # Switch to inference mode and evaluate
-    FastLanguageModel.for_inference(model)
+    # Free the GRPO-trained model entirely before inference.
+    # GRPO's functional transforms (torch.func.grad_and_value) corrupt CUDA
+    # memory state; reusing the same model for inference causes illegal memory
+    # access in fast_rope_embedding.  Reload clean from disk instead.
+    del model
     if torch.cuda.is_available():
+        torch.cuda.synchronize()
         torch.cuda.empty_cache()
-        gc.collect()
+    gc.collect()
+
+    print("  Reloading model from disk for clean inference...")
+    model, tokenizer = FastLanguageModel.from_pretrained(
+        model_name=model_output_dir,
+        max_seq_length=MAX_SEQ_LENGTH,
+        dtype=torch.bfloat16,
+        load_in_4bit=True,
+        device_map={"": torch.cuda.current_device()},
+    )
+    tokenizer.padding_side = "left"
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    FastLanguageModel.for_inference(model)
 
     metrics = evaluate_fold(model, tokenizer, val_dir, fold_num, results_dir)
 
