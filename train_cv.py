@@ -301,10 +301,17 @@ def batch_classify_quantum_circuits(
 
         orig_padding = tokenizer.padding_side
         tokenizer.padding_side = "left"
+        # Limit prompt tokens to MAX_SEQ_LENGTH - MAX_NEW_TOKENS_INFERENCE so
+        # that the total sequence (prompt + generated tokens) never exceeds
+        # MAX_SEQ_LENGTH.  unsloth pre-computes the RoPE cos/sin table for
+        # exactly MAX_SEQ_LENGTH positions (0..MAX_SEQ_LENGTH-1); if the
+        # autoregressive loop generates a token at position >= MAX_SEQ_LENGTH
+        # the RoPE CUDA kernel reads past the end of the table, causing
+        # "CUDA error: an illegal memory access" at the next synchronize().
         inputs = tokenizer(
             prompts,
             return_tensors="pt",
-            max_length=MAX_SEQ_LENGTH,
+            max_length=MAX_SEQ_LENGTH - MAX_NEW_TOKENS_INFERENCE,
             truncation=True,
             padding=True,
             add_special_tokens=False,
