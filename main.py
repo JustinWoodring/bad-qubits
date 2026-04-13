@@ -269,12 +269,15 @@ def cmd_run_all(args) -> None:
 def cmd_eval_fold(args) -> None:
     """Load a saved model and evaluate it on val + test sets (runs in a fresh process)."""
     header("EVAL FOLD")
-    import torch
-    from unsloth import FastLanguageModel
+    # Import train_cv FIRST — its module-level code applies the torchao/torch
+    # stubs that transformers>=4.47 requires when torchao<0.7 is installed.
+    # Importing unsloth before those stubs are in place causes ImportError.
     from train_cv import (
         evaluate_fold, evaluate_fold_qualitative,
         MAX_SEQ_LENGTH,
     )
+    import torch
+    from unsloth import FastLanguageModel
 
     model_dir   = args.model_dir
     val_dir     = args.val_dir
