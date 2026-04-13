@@ -96,13 +96,6 @@ log "Installing requirements.txt..."
 pip install -r "$SCRIPT_DIR/requirements.txt" 2>&1 | while IFS= read -r line; do
     echo "  [pip] $line"
 done
-
-# mergekit pins accelerate~=1.0.1 which conflicts with our >=1.1.0 floor.
-# Install it without deps — transformers/accelerate/etc. are already present.
-log "Installing mergekit (--no-deps to avoid accelerate conflict)..."
-pip install --no-deps mergekit 2>&1 | while IFS= read -r line; do
-    echo "  [pip] $line"
-done
 log "Dependencies ready."
 
 # ── defaults ──────────────────────────────────────────────────────────────────

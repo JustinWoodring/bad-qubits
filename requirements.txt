@@ -12,7 +12,6 @@
 #   trl          >=0.15  : unsloth 2025.10.4 PatchFastRL targets TRL 0.15 GRPOTrainer
 #                          internals; 0.13/0.14 have different _generate_and_score API
 
-llm-blender
 weave
 trl>=0.15.0,<0.17.0
 transformers>=4.47.0,<4.52.0
