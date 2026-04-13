@@ -266,6 +266,62 @@ def cmd_run_all(args) -> None:
     print(f"  models/fold_{{1-5}}/            — per-fold LoRA adapters")
 
 
+def cmd_eval_fold(args) -> None:
+    """Load a saved model and evaluate it on val + test sets (runs in a fresh process)."""
+    header("EVAL FOLD")
+    import torch
+    from unsloth import FastLanguageModel
+    from train_cv import (
+        evaluate_fold, evaluate_fold_qualitative,
+        MAX_SEQ_LENGTH,
+    )
+
+    model_dir   = args.model_dir
+    val_dir     = args.val_dir
+    test_dir    = getattr(args, "test_dir", None)
+    fold_num    = args.fold_num
+    results_dir = args.results_dir
+
+    if not os.path.isdir(model_dir):
+        print(f"ERROR: Model directory not found: {model_dir}")
+        sys.exit(1)
+
+    os.makedirs(results_dir, exist_ok=True)
+
+    print(f"Model dir   : {model_dir}")
+    print(f"Val dir     : {val_dir}")
+    print(f"Results dir : {results_dir}\n")
+
+    model, tokenizer = FastLanguageModel.from_pretrained(
+        model_name=model_dir,
+        max_seq_length=MAX_SEQ_LENGTH,
+        dtype=torch.bfloat16,
+        load_in_4bit=True,
+        device_map={"": torch.cuda.current_device()} if torch.cuda.is_available() else "auto",
+    )
+    tokenizer.padding_side = "left"
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    FastLanguageModel.for_inference(model)
+
+    metrics = evaluate_fold(model, tokenizer, val_dir, fold_num, results_dir)
+
+    if test_dir and os.path.isdir(test_dir):
+        qualitative = evaluate_fold_qualitative(model, tokenizer, test_dir, fold_num, results_dir)
+        metrics["test_qualitative_summary"] = {
+            "n_samples": len(qualitative),
+            "n_correct": sum(1 for q in qualitative if q["correct"]),
+            "accuracy":  round(sum(1 for q in qualitative if q["correct"]) / len(qualitative), 4)
+                         if qualitative else None,
+        }
+        # Re-save per_class_metrics.json with qualitative summary included
+        import json as _json
+        with open(os.path.join(results_dir, "per_class_metrics.json"), "w") as f:
+            _json.dump(metrics, f, indent=2)
+
+    print(f"\nEval fold {fold_num} complete.")
+
+
 def cmd_classify(args) -> None:
     """Classify a single .qasm file using the trained model (fold 1 by default)."""
     header("CLASSIFY")
@@ -413,6 +469,16 @@ def build_parser() -> argparse.ArgumentParser:
     p_all.add_argument("--sft-steps",  type=int, default=60)
     p_all.add_argument("--grpo-steps", type=int, default=200)
     p_all.set_defaults(func=cmd_run_all)
+
+    # --- eval-fold ---
+    p_eval = subparsers.add_parser("eval-fold",
+                                   help="Evaluate a saved fold model (fresh-process inference)")
+    p_eval.add_argument("--model-dir",   required=True, help="Path to saved LoRA adapter dir")
+    p_eval.add_argument("--val-dir",     required=True, help="Path to validation set dir")
+    p_eval.add_argument("--test-dir",    default=None,  help="Path to test set dir (optional)")
+    p_eval.add_argument("--fold-num",    type=int, required=True)
+    p_eval.add_argument("--results-dir", required=True)
+    p_eval.set_defaults(func=cmd_eval_fold)
 
     # --- classify ---
     p_cls = subparsers.add_parser("classify", help="Classify a single .qasm file")

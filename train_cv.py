@@ -17,6 +17,7 @@ import os
 os.environ["WANDB_MODE"] = "disabled"
 import gc
 import re
+import sys
 import json
 import time
 import argparse
@@ -1179,40 +1180,47 @@ def train_fold(
     tokenizer.save_pretrained(model_output_dir)
     print(f"  Model saved to {model_output_dir}/")
 
-    # Free the GRPO-trained model entirely before inference.
-    # GRPO's functional transforms (torch.func.grad_and_value) corrupt CUDA
-    # memory state; reusing the same model for inference causes illegal memory
-    # access in fast_rope_embedding.  Reload clean from disk instead.
+    # GRPO's torch.func.grad_and_value functional transforms corrupt the CUDA
+    # driver-level memory state in the current process.  Even deleting the model
+    # and calling empty_cache() leaves the corruption behind, so any inference
+    # attempt (including a fresh FastLanguageModel.from_pretrained) will crash
+    # with "CUDA error: an illegal memory access" inside fast_rope_embedding.
+    #
+    # The only reliable fix is to run evaluation in a completely fresh process
+    # that has never touched the GRPO kernels.  We spawn main.py eval-fold as a
+    # subprocess, wait for it to finish, then read the metrics it saved to disk.
     del model
     if torch.cuda.is_available():
         torch.cuda.synchronize()
         torch.cuda.empty_cache()
     gc.collect()
 
-    print("  Reloading model from disk for clean inference...")
-    model, tokenizer = FastLanguageModel.from_pretrained(
-        model_name=model_output_dir,
-        max_seq_length=MAX_SEQ_LENGTH,
-        dtype=torch.bfloat16,
-        load_in_4bit=True,
-        device_map={"": torch.cuda.current_device()},
-    )
-    tokenizer.padding_side = "left"
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
-    FastLanguageModel.for_inference(model)
+    import subprocess as _subprocess
 
-    metrics = evaluate_fold(model, tokenizer, val_dir, fold_num, results_dir)
-
-    # Qualitative analysis on the held-out test set
+    main_py = os.path.join(os.path.dirname(os.path.abspath(__file__)), "main.py")
+    cmd = [
+        sys.executable, main_py, "eval-fold",
+        "--model-dir",   model_output_dir,
+        "--val-dir",     val_dir,
+        "--fold-num",    str(fold_num),
+        "--results-dir", results_dir,
+    ]
     if test_dir and os.path.isdir(test_dir):
-        qualitative = evaluate_fold_qualitative(model, tokenizer, test_dir, fold_num, results_dir)
-        metrics["test_qualitative_summary"] = {
-            "n_samples": len(qualitative),
-            "n_correct": sum(1 for q in qualitative if q["correct"]),
-            "accuracy":  round(sum(1 for q in qualitative if q["correct"]) / len(qualitative), 4)
-                         if qualitative else None,
-        }
+        cmd += ["--test-dir", test_dir]
+
+    print(f"  Spawning eval subprocess for fold {fold_num}...")
+    result = _subprocess.run(cmd, check=False)
+    if result.returncode != 0:
+        print(f"  WARNING: eval subprocess exited with code {result.returncode} — "
+              f"check logs above.  Training results are saved; metrics may be incomplete.")
+
+    metrics_path = os.path.join(results_dir, "per_class_metrics.json")
+    if os.path.exists(metrics_path):
+        with open(metrics_path) as f:
+            metrics = json.load(f)
+    else:
+        print(f"  WARNING: {metrics_path} not found after eval subprocess — returning stub.")
+        metrics = {"fold": fold_num, "overall": {}, "by_category": {}, "confusion_matrix": []}
 
     return metrics
 
