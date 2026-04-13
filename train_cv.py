@@ -269,7 +269,19 @@ def get_optimal_batch_size() -> int:
     gpu_memory = torch.cuda.get_device_properties(0).total_memory
     available_memory = gpu_memory - torch.cuda.memory_allocated(0)
     estimated_memory_per_sample = 3 * 1024**3
-    return max(1, int(available_memory * 0.6 / estimated_memory_per_sample))
+    batch_from_memory = max(1, int(available_memory * 0.6 / estimated_memory_per_sample))
+
+    # Triton kernels (SwiGLU, etc.) pass n_elements as int32.
+    # n_elements = batch * seq_len * intermediate_size; if this overflows int32
+    # (max 2 147 483 647) the kernel accesses invalid memory → CUDA illegal access.
+    # Qwen2.5-Coder 7B intermediate_size = 18 944; worst-case padded seq after our
+    # inference tokenisation cap = MAX_SEQ_LENGTH - MAX_NEW_TOKENS_INFERENCE = 7936.
+    _INT32_MAX      = 2_147_483_647
+    _INTERMEDIATE   = 18_944          # Qwen2.5-Coder 7B MLP intermediate size
+    _MAX_SEQ        = MAX_SEQ_LENGTH - MAX_NEW_TOKENS_INFERENCE  # 7 936
+    batch_from_int32 = max(1, _INT32_MAX // (_MAX_SEQ * _INTERMEDIATE))  # = 14
+
+    return min(batch_from_memory, batch_from_int32)
 
 
 def batch_classify_quantum_circuits(
@@ -1225,14 +1237,10 @@ def train_fold(
     if test_dir and os.path.isdir(test_dir):
         cmd += ["--test-dir", test_dir]
 
-    # BAD_QUBITS_EVAL=1   → skips PatchFastRL (GRPO training patches) in train_cv.py
-    # CUDA_LAUNCH_BLOCKING=1 → makes CUDA kernels synchronous so async errors are
-    #   reported at the exact kernel call (not deferred to a later synchronize),
-    #   which both gives an accurate traceback AND prevents the race where a kernel
-    #   on unsloth's custom stream uses memory that was freed by the main stream.
+    # BAD_QUBITS_EVAL=1 → skips PatchFastRL (GRPO training patches) in train_cv.py
+    # so the eval subprocess runs pure unsloth inference without any GRPO mutations.
     eval_env = os.environ.copy()
     eval_env["BAD_QUBITS_EVAL"] = "1"
-    eval_env["CUDA_LAUNCH_BLOCKING"] = "1"
 
     print(f"  Spawning eval subprocess for fold {fold_num}...")
     result = _subprocess.run(cmd, check=False, env=eval_env)
