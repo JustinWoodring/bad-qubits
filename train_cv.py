@@ -331,6 +331,12 @@ def batch_classify_quantum_circuits(
                 )
                 results.append(response.strip())
 
+            # Synchronize before freeing: unsloth's fast_rope_embedding runs on
+            # a non-default CUDA stream.  If we free tensors while that stream
+            # is still executing, the next batch may reuse the same memory and
+            # trigger "CUDA error: an illegal memory access" mid-batch.
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
             del inputs, outputs
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
